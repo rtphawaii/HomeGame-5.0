@@ -69,6 +69,12 @@ import copy
 #UPDATE 13 - Done
 # Make game rooms for each websocket 
 
+#UPDATE 13B - Done
+# Make it mobile friendly using @media, vertical stack and anchor restart button to bottom
+
+#UPDATE 13C - Done
+# Can now play with two players, added position() function and modified preflop Round() and bets() 
+
 #UPDATE 14 
 # For each time you send or maybe receive add to a game ledger, feed the entire ledger joined with separators to an open ai api and spit back a summary of the game play
 
@@ -218,6 +224,25 @@ class Table():
                 self.players_by_id[pid] = p
                 return p
         return None
+    
+    def positions(self):
+        """
+        Returns (dealer_idx, sb_idx, bb_idx) for current self.order.
+        Heads-up: dealer IS small blind; other player is big blind.
+        3+ players: dealer at 0, SB at 1, BB at 2 (as before).
+        """
+        n = len(self.order)
+        if n < 2:
+            raise RuntimeError("Not enough players to compute positions")
+
+        dealer_idx = 0
+        if n == 2:
+            sb_idx = dealer_idx
+            bb_idx = (dealer_idx + 1) % n
+        else:
+            sb_idx = (dealer_idx + 1) % n
+            bb_idx = (dealer_idx + 2) % n
+        return dealer_idx, sb_idx, bb_idx
 
 
     # async def bets(self,preflop=False):
@@ -374,19 +399,19 @@ class Table():
         # --- Street target (what players must call TO) ---
         self.round_to = self.bigblind if preflop else 0  # start-of-street target
 
-        # --- Find starting index ---
+        # --- Find starting index (works for 2+ players) ---
+        n = len(self.order)
+        dealer_idx, sb_idx, bb_idx = self.positions()
+
         if preflop:
-            # Start left of the big blind (assumes BB is self.order[2])
-            player_to_find = self.order[2]
-            found_index = None
-            for index, player in enumerate(self.order):
-                if player == player_to_find:
-                    found_index = index + 1
-                    end_index = found_index
-                    break
+            # Action starts left of the BB (i.e., next seat after BB)
+            found_index = (bb_idx + 1) % n
+            end_index   = found_index
         else:
-            # Postflop action starts after dealer and ends on dealer
-            found_index, end_index = 1, 1
+            # Postflop: action starts left of the dealer, ends on dealer
+            found_index = (dealer_idx + 1) % n
+            end_index   = found_index
+
 
         if found_index is None:
             return
@@ -990,8 +1015,9 @@ class Table():
         self.pot = 0
 
         # ... after dealing, before preflop betting ...
-        sbp = self.order[1]  # small blind
-        bbp = self.order[2]  # big blind
+        dealer_idx, sb_idx, bb_idx = self.positions()
+        sbp = self.order[sb_idx]
+        bbp = self.order[bb_idx]
 
         # Post blinds as DELTAS into the ledger and pot
         self.contributed[sbp] += self.smallblind
