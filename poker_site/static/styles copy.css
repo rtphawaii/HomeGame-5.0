@@ -334,65 +334,128 @@ h2 {
   font-weight: 600;
 }
 .add-balance button:hover { background: var(--accent-light); }
-
-
 /* =========================
-   📱 MOBILE-ONLY STACK (≤700px)
-   Order: Board → Hand → Chat → Player Info → Add Balance
+   📱 OPTIMIZED MOBILE LAYOUT (portrait ≤700px)
    ========================= */
 @media (max-width: 700px) {
-  /* 1) Make the page a vertical stack on mobile */
+
   body {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
     padding: 8px;
+    overflow-x: hidden;
   }
 
-  /* 2) Flatten wrappers so the inner sections can be ordered together */
-  .container { display: contents; }
-  #right-col { display: contents; }
+  .site-header {
+    margin-bottom: 8px;
+  }
 
-  /* 3) Full width for each section */
-  #board-display,
-  #hand-panel,
-  #chat-section,
-  #player-info,
-  #add-balance {
+  .logo {
+    width: 70px;
+  }
+
+  .container {
+    flex-direction: column;
+    gap: 10px;
     width: 100%;
-    max-width: 100%;
-    margin-bottom: 12px;
+    align-items: stretch;
   }
 
-  /* 4) Exact mobile order */
-  #board-display { order: 1; }
-  #hand-panel    { order: 2; }
-  #chat-section  { order: 3; }
-  #player-info   { order: 4; }
-  #add-balance   { order: 5; }
+  /* 🎴 Board first, full width */
+  #board-display {
+    width: 100%;
+    padding: 6px;
+    margin-bottom: 8px;
+    font-size: 1em;
+  }
+  #board-display .board-cards {
+    gap: 4px;
+  }
+  #board-display .card-img {
+    height: 50px;
+  }
 
-  /* 5) Optional: hide the HUD (pot/bet) on mobile to save space.
-        If you prefer to keep it, comment the next line and add:
-        .hud-row { order: 2; width: 100%; } */
-  .hud-row { display: none; }
+  /* 🪙 Pot and Bet HUD stack tightly */
+  .hud-row {
+    flex-direction: row;
+    justify-content: space-between;
+    width: 100%;
+    gap: 8px;
+  }
+  .hud-row #pot-display,
+  .hud-row #bet-display {
+    flex: 1;
+    font-size: 0.95em;
+    padding: 6px;
+  }
 
-  /* 6) Size tweaks for small screens */
-  #board-display .card-img,
-  #hand-display .card-img { height: 56px; }
+  /* ✋ Hand display centered and tighter */
+  #hand-display .hand-cards {
+    gap: 3px;
+  }
+  #hand-display .card-img {
+    height: 55px;
+  }
 
-  #chat-log { height: 180px; font-size: 0.9em; }
-  #chat-message-input, #send { font-size: 0.9em; }
+  /* 💬 Chat section: collapsible look */
+  #chat-section {
+    order: 3;
+    width: 100%;
+  }
+  #chat-log {
+    height: 160px;
+    font-size: 0.9em;
+  }
+  #chat-message-input {
+    width: 70%;
+    font-size: 0.9em;
+  }
+  #send {
+    font-size: 0.9em;
+    padding: 8px 10px;
+  }
 
-  #player-info { max-height: 220px; overflow-y: auto; }
+  /* 🧑 Player info under board, smaller */
+  #right-col {
+    order: 2;
+    width: 100%;
+    gap: 8px;
+  }
+  #player-info {
+    height: auto;
+    max-height: 200px;
+    overflow-y: auto;
+    font-size: 0.9em;
+  }
 
-  /* Restart button: full-width at bottom on mobile */
+  /* 💰 Add balance compact */
+  .add-balance {
+    flex-direction: row;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    width: 100%;
+    gap: 6px;
+  }
+  .add-balance label {
+    font-size: 0.9em;
+  }
+  .add-balance input {
+    flex: 1;
+  }
+  .add-balance button {
+    flex: 0 0 80px;
+    font-size: 0.9em;
+  }
+
+  /* 🔁 Restart button pinned bottom */
   #restart-btn {
-    position: static;
-    width: 100%;
-    padding: 10px;
+    position: fixed;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    width: calc(100% - 24px);
     font-size: 14px;
-    margin-top: 8px;
+    padding: 10px;
+    border-radius: 10px;
+    z-index: 100;
   }
 }
-
 
