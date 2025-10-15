@@ -163,22 +163,7 @@
       if (!room) return;
       window.location.href = `/room/${encodeURIComponent(room)}/`;
     }
-
-    document.getElementById("clear-rooms").addEventListener("click", async () => {
-        const status = document.getElementById("clear-status");
-        status.textContent = "Clearing...";
-        try {
-            const res = await fetch("/rooms/clear/", { method: "POST" });
-            const data = await res.json();
-            if (data.ok) {
-                status.textContent = "✅ All rooms cleared.";
-            } else {
-                status.textContent = "⚠️ Failed to clear rooms.";
-            }
-        } catch (err) {
-            status.textContent = "❌ Network error.";
-        }
-    });
+    
   </script>
 </body>
 </html>
