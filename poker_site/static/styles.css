@@ -348,23 +348,24 @@ h2 {
   z-index: 2;
 }
 
-/* ---- MOBILE: pin action bar to bottom, keep Restart inside it ---- */
+/* ---- MOBILE: stacked layout, fixed bottom bar ---- */
 @media (max-width: 700px) {
 
-  /* Make the page a single vertical flow */
   body {
     display: flex;
     flex-direction: column;
     align-items: stretch;
     padding: 8px;
-    padding-bottom: 80px; /* Add space for fixed button */
+    padding-bottom: 80px; /* space for fixed bar */
+    overflow-x: hidden;   /* prevent sideways scrolling */
   }
 
-  /* Flatten wrappers so we can control order */
-  .container { display: contents; }
-  #right-col { display: contents; }
+  .container,
+  #right-col {
+    display: contents;
+  }
 
-  /* Full width sections */
+  /* stack all sections in correct order */
   #board-display,
   #hand-panel,
   #chat-section,
@@ -374,9 +375,9 @@ h2 {
     width: 100%;
     max-width: 100%;
     margin-bottom: 12px;
+    box-sizing: border-box;
   }
 
-  /* Explicit mobile order (no two columns) */
   #board-display { order: 1; }
   #hand-panel    { order: 2; }
   #chat-section  { order: 3; }
@@ -384,35 +385,39 @@ h2 {
   #add-balance   { order: 5; }
   .action-bar    { order: 6; }
 
-  /* Board and hand: horizontal layout, smaller images */
+  /* narrower, centered board box */
+  #board-display {
+    width: 95%;
+    margin: 0 auto 12px;
+    padding: 8px 10px;
+  }
+
+  /* smaller card images for board & hand */
+  #board-display .card-img,
+  #hand-display .card-img {
+    height: 70px;          /* smaller */
+    aspect-ratio: 5 / 7;
+  }
+
+  /* lay cards horizontally and centered */
   #board-display .board-cards,
   #hand-display .hand-cards {
     display: flex;
-    flex-direction: row;
-    justify-content: center;
-    gap: 4px;
     flex-wrap: nowrap;
+    justify-content: center;
     overflow-x: auto;
-    overflow-y: hidden;
-    scroll-snap-type: x mandatory;
+    gap: 6px;
     padding-bottom: 4px;
-    -webkit-overflow-scrolling: touch;
   }
 
-  #board-display .card-img,
-  #hand-display .card-img {
-    height: 60px;             /* smaller height for mobile */
-    aspect-ratio: 5 / 7;
-    object-fit: contain;
-    scroll-snap-align: center;
+  /* reduce hand panel height slightly */
+  #hand-panel {
+    padding: 10px;
+    max-height: 150px;
+    overflow-y: visible;
   }
 
-  #board-display .card-caption,
-  #hand-display .card-caption {
-    font-size: 0.75em;
-  }
-
-  /* Pin action bar to bottom */
+  /* pinned bottom action bar */
   .action-bar {
     position: fixed !important;
     left: 0;
@@ -429,7 +434,6 @@ h2 {
     z-index: 9999;
   }
 
-  /* keep the button inline within the bar on mobile */
   #restart-btn {
     position: static !important;
     width: 100%;
@@ -439,7 +443,7 @@ h2 {
   }
 }
 
-/* ---- DESKTOP: keep your original fixed bottom-left button ---- */
+/* ---- DESKTOP ---- */
 @media (min-width: 701px) {
   #restart-btn {
     position: fixed;
@@ -448,6 +452,7 @@ h2 {
     transform: none;
   }
 }
+
 
 /* =========================
    iOS Safari Zoom Prevention
