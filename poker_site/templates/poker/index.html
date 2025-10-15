@@ -87,21 +87,65 @@
 
     // Restart button → WS control
     document.getElementById("restart-btn")?.addEventListener("click", () => {
-        if (chatSocket.readyState === WebSocket.OPEN) {
-        chatSocket.send(JSON.stringify({ type: "control", cmd: "restart_game" }));
-        } else {
+        if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
+        window.chatSocket.send(JSON.stringify({ type: "control", cmd: "restart_game" }));
+        }
         alert("Connection not open yet. Try again in a moment.");
         }
-    });
+    );
 
     // Optional: Start New Round button
     document.getElementById("start-round-btn")?.addEventListener("click", () => {
-        if (chatSocket.readyState === WebSocket.OPEN) {
-        chatSocket.send(JSON.stringify({ type: "control", cmd: "start_new_round" }));
+        if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
+        window.chatSocket.send(JSON.stringify({ type: "control", cmd: "start_new_round" }));
         }
     });
 
-        // New websocket connection that stop disconnecting for mobile
+    function handleSocketMessage(data) {
+    console.log("Received:", data);
+
+    // Hard reset from server
+    if (data.reset) {
+        document.getElementById('board-display').textContent = 'Board: (Waiting for cards...)';
+        document.getElementById('pot-display').textContent = 'Pot: $0';
+        document.getElementById('bet-display').textContent = 'Bet: $0';
+        document.getElementById('hand-display').innerHTML = '';
+        document.getElementById('player-stats').innerHTML = '';
+        return;
+    }
+
+    // Chat message
+    if (data.message) {
+        const chatLog = document.getElementById('chat-log');
+        const msg = document.createElement('div');
+        msg.textContent = data.message;
+        chatLog.appendChild(msg);
+        chatLog.scrollTop = chatLog.scrollHeight;
+    }
+
+    // Player update
+    if (data.player) {
+        updatePlayerStats(data.player);
+        if (data.player.hand) renderHand(data.player.hand);
+    }
+
+    // Board updates
+    if (data.board) {
+        renderBoard(data.board.board);
+    }
+
+    // Pot updates
+    if (data.pot) {
+        document.getElementById('pot-display').textContent = `Pot: $${data.pot.pot}`;
+    }
+
+    // Bet updates
+    if (data.bet) {
+        document.getElementById('bet-display').textContent = `Bet: $${data.bet.amount}`;
+    }
+    }
+
+    // Create Socket
     function createSocket() {
     const socket = new WebSocket(
         (location.protocol === 'https:' ? 'wss://' : 'ws://') +
@@ -114,15 +158,15 @@
         const chatLog = document.getElementById('chat-log');
         if (chatLog) {
         const msg = document.createElement('div');
-        msg.textContent = '[System] Reconnected to server ✅';
+        msg.textContent = '[System] Connected to server ✅';
         chatLog.appendChild(msg);
         }
     };
 
     socket.onclose = (e) => {
-        console.warn('[WS] Closed. Retrying in 3s...', e.reason);
+        console.warn('[WS] Closed. Retrying in 3s...', e?.reason);
         setTimeout(() => {
-        chatSocket = createSocket(); // recursively reconnect
+        window.chatSocket = createSocket(); // 🔁 reconnect with GLOBAL
         }, 3000);
     };
 
@@ -139,62 +183,23 @@
     return socket;
     }
 
-    // Replace your old socket variable
-    let chatSocket = createSocket();
+    // Initialize as GLOBAL
+    window.chatSocket = createSocket();
+    
+    // Optional keep-alive
+    setInterval(() => {
+    if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
+        window.chatSocket.send(JSON.stringify({ type: "ping" }));
+    }
+    }, 20000);
 
-
-    // Single, unified onmessage handler (includes reset logic)
-    chatSocket.onmessage = function (e) {
-        const data = JSON.parse(e.data);
-        console.log("Received:", data);
-
-        // Hard reset from server
-        if (data.reset) {
-        document.getElementById('board-display').textContent = 'Board: (Waiting for cards...)';
-        document.getElementById('pot-display').textContent = 'Pot: $0';
-        document.getElementById('bet-display').textContent = 'Bet: $0';
-        document.getElementById('hand-display').innerHTML = '';
-        document.getElementById('player-stats').innerHTML = '';
-        return;
-        }
-
-        // Chat message
-        if (data.message) {
-        const chatLog = document.getElementById('chat-log');
-        const msg = document.createElement('div');
-        msg.textContent = data.message;
-        chatLog.appendChild(msg);
-        chatLog.scrollTop = chatLog.scrollHeight;
-        }
-
-        // Player update
-        if (data.player) {
-        updatePlayerStats(data.player);
-        if (data.player.hand) renderHand(data.player.hand);
-        }
-
-        // Board updates
-        if (data.board) {
-        renderBoard(data.board.board);
-        }
-
-        // Pot updates
-        if (data.pot) {
-        document.getElementById('pot-display').textContent = `Pot: $${data.pot.pot}`;
-        }
-
-        // Bet updates
-        if (data.bet) {
-        document.getElementById('bet-display').textContent = `Bet: $${data.bet.amount}`;
-        }
-    };
 
     // Chat send
     document.getElementById('send').onclick = function () {
         const messageInputDom = document.getElementById('chat-message-input');
         const message = messageInputDom.value;
-        if (chatSocket.readyState === WebSocket.OPEN) {
-        chatSocket.send(JSON.stringify({ 'message': message }));
+        if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
+        window.chatSocket.send(JSON.stringify({ message }));
         }
         messageInputDom.value = '';
     };
@@ -334,10 +339,8 @@
         alert("Enter a valid positive number!"); 
         return; 
         }
-        if (chatSocket.readyState === WebSocket.OPEN) {
-        chatSocket.send(JSON.stringify({ type: "add_balance", amount }));
-        } else {
-        alert("Connection not open yet. Try again in a moment.");
+        if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
+        window.chatSocket.send(JSON.stringify({ type: "add_balance", amount }));
         }
         field.value = "";
     };
