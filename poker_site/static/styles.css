@@ -389,12 +389,15 @@ h2 {
    Fix restart button position for mobile
    ========================= */
 @media (max-width: 700px) {
+  /* Force restart button to appear last in the stack */
   #restart-btn {
-    position: static;           /* remove floating behavior */
+    position: static;          /* remove fixed behavior */
     display: block;
+    order: 99;                 /* push to bottom of flex order */
+    align-self: stretch;
     width: 100%;
-    margin-top: 12px;
-    margin-bottom: 16px;        /* adds space from bottom edge */
+    margin-top: 16px;
+    margin-bottom: 24px;
     background-color: #f04e4e;
     color: #fff;
     border: none;
@@ -407,8 +410,18 @@ h2 {
 
   #restart-btn:hover {
     background-color: #d93b3b;
-    transform: none;
+  }
+
+  /* Ensure all parent containers use flex so "order" works */
+  body {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .container, #right-col {
+    display: contents;
   }
 }
+
 
 
