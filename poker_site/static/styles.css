@@ -420,7 +420,7 @@ h2 {
 
   /* Fix hand panel height */
   #hand-panel {
-    max-height: 170px;
+    max-height: 180px;
     overflow-y: visible;
   }
 
