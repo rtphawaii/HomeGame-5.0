@@ -337,10 +337,39 @@ h2 {
 
 /* ---- MOBILE: pin action bar to bottom, keep Restart inside it ---- */
 @media (max-width: 700px) {
-  /* room so content isn't hidden by the bar */
+
+    /* Make the page a single vertical flow */
   body {
-    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 8px;
+    padding-bottom: 80px; /* Add space for fixed button */
   }
+
+  /* Flatten wrappers so we can control order */
+  .container { display: contents; }
+  #right-col { display: contents; }
+
+  /* Full width sections */
+  #board-display,
+  #hand-panel,
+  #chat-section,
+  #player-info,
+  #add-balance,
+  .action-bar {
+    width: 100%;
+    max-width: 100%;
+    margin-bottom: 12px;
+  }
+  
+    /* Explicit mobile order (no two columns) */
+  #board-display { order: 1; }
+  #hand-panel    { order: 2; }
+  #chat-section  { order: 3; }
+  #player-info   { order: 4; }
+  #add-balance   { order: 5; }
+  .action-bar    { order: 6; }
 
   /* override any previous mobile rules that made it 'relative' */
   .action-bar {
