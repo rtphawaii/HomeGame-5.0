@@ -336,60 +336,51 @@ h2 {
 .add-balance button:hover { background: var(--accent-light); }
 
 /* =========================
-   Mobile: stack everything; keep Restart at the bottom
+   Mobile: action bar fixed at bottom
    ========================= */
 @media (max-width: 700px) {
-  /* Stack everything vertically */
+  /* Make room so content isn’t hidden behind the bar */
   body {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
   }
 
-  /* Flatten wrappers */
-  .container,
-  #right-col {
-    display: contents;
-  }
-
-  /* Ensure sections appear in correct order */
-  #board-display { order: 1; }
-  #hand-panel    { order: 2; }
-  #chat-section  { order: 3; }
-  #player-info   { order: 4; }
-  #add-balance   { order: 5; }
-  .action-bar    { order: 6; }
-
-  /* Fix action bar behavior */
+  /* Fixed bottom bar */
   .action-bar {
-    position: relative !important; /* anchor in layout, not float */
-    bottom: auto !important;
-    top: auto !important;
-    width: 100%;
-    margin-top: 16px;
-    margin-bottom: 16px;
-    text-align: center;
-    z-index: 1; /* ensure it’s not overlapping */
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 10px 12px;
+    background: var(--surface-1);
+    border-top: 1px solid var(--border-color);
+    box-shadow: 0 -6px 16px rgba(0,0,0,.12);
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    align-items: center;
+    z-index: 999; /* above cards/chat */
   }
 
-  /* Restart button inside the action bar */
+  /* Make buttons fit nicely across */
+  .action-bar button,
+  .action-bar .btn {
+    flex: 1 1 0;
+  }
+
+  /* If your restart button is inside the action bar, keep it inline */
   #restart-btn {
     position: static !important;
     width: 100%;
-    display: block;
-    background-color: #f04e4e;
-    color: #fff;
-    padding: 12px;
-    border-radius: 8px;
-    font-size: 16px;
-    border: none;
-    margin: 0 auto;
+    margin: 0;
+    transform: none;
+    box-shadow: none;
   }
 
-  #restart-btn:hover {
-    background-color: #d93b3b;
-  }
+  /* If your restart button is NOT inside .action-bar and still fixed elsewhere,
+     uncomment the next line to hide it on mobile to avoid overlap */
+  /* #restart-btn { display: none !important; } */
 }
+
 
 
 
