@@ -395,4 +395,30 @@ h2 {
   }
 }
 
+/* =========================
+   Fix restart button position for mobile
+   ========================= */
+@media (max-width: 700px) {
+  #restart-btn {
+    position: static;           /* remove floating behavior */
+    display: block;
+    width: 100%;
+    margin-top: 12px;
+    margin-bottom: 16px;        /* adds space from bottom edge */
+    background-color: #f04e4e;
+    color: #fff;
+    border: none;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 16px;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+  }
+
+  #restart-btn:hover {
+    background-color: #d93b3b;
+    transform: none;
+  }
+}
+
 
