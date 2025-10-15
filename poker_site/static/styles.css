@@ -420,22 +420,41 @@ h2 {
 
   /* Fix hand panel height */
   #hand-panel {
-    max-height: 140px;
+    max-height: 170px;
     overflow-y: visible;
   }
 
-  /* ===== Chat Section ===== */
+  /* ===== Chat Section (Mobile) ===== */
   #chat-section {
     display: flex;
     flex-direction: column;
     align-items: stretch;
+    width: 95%;
+    margin: 0 auto 12px;
   }
 
   #chat-log {
-    height: 200px;            /* was 320px */
+    height: 200px;            /* Adjust as needed */
     min-height: 160px;
     overflow-y: auto;
+    margin-bottom: 8px;       /* ✅ space below to avoid overlap */
   }
+
+  /* Make input + send stack neatly below the chat log */
+  #chat-message-input {
+    flex: 1;
+    width: 100%;
+    margin-bottom: 8px;
+    box-sizing: border-box;
+  }
+
+  #send {
+    width: 100%;
+    padding: 10px;
+    margin: 0;
+    box-sizing: border-box;
+  }
+
 
   /* ===== Action Bar (Restart) ===== */
   .action-bar {
