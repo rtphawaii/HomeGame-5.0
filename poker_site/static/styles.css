@@ -11,6 +11,14 @@
   --accent-light: #9f9e9e;   /* medium grey for hover */
 }
 
+input,
+button,
+textarea,
+select {
+  font-size: 16px !important; /* prevents Safari zoom */
+}
+
+
 /* =========================
    Base Layout
    ========================= */
@@ -436,8 +444,19 @@ h2 {
   }
 }
 
+/* =========================
+   iOS Safari Zoom Prevention
+   ========================= */
+@supports (-webkit-touch-callout: none) {
+  input,
+  button {
+    font-size: 16px !important;
+  }
 
-
+  body {
+    -webkit-text-size-adjust: 100%; /* prevents Safari auto-scaling */
+  }
+}
 
 
 
