@@ -1,0 +1,310 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HomeGame</title>
+    <link rel="stylesheet" href="{% static 'styles.css' %}">
+</head>
+<body>
+
+    <header class="site-header">
+        <img
+        class="logo"
+        src="{% static 'images/homegamelogo.png' %}"
+        alt="HomeGame Poker"
+        width="320"
+        height="auto"
+        decoding="async"
+        fetchpriority="high"
+        />
+    </header>
+
+    <!-- board box -->
+    <div id="board-display">
+        Board: (Waiting for cards...)
+    </div>
+    
+    <!-- pot and bet -->
+    <div class="hud-row">
+    <div id="pot-display">Pot: $0</div>
+    <div id="bet-display">Bet: $0</div>
+    </div>
+
+    <!-- chat box and player info -->
+    <div class="container">
+        <div id="chat-section">
+            <div id="chat-log"></div>
+            <input id="chat-message-input" type="text" placeholder="Type your move..." />
+            <button id="send">Send</button>
+        </div>
+
+
+    <!-- right column stacks Hand (boxed) ABOVE Player Info -->
+        <div id="right-col">
+        <section id="hand-panel" class="panel" aria-live="polite" aria-label="Player Hand">
+            <h3>Hand</h3>
+            <div id="hand-display"></div>
+        </section>
+
+        <section id="player-info" class="panel">
+            <h3>Player Info</h3>
+            <div id="player-stats"></div>
+        </section>
+
+        <!-- Move this OUTSIDE of player-info -->
+        <div id="add-balance" class="add-balance panel">
+        <label for="amount-input">Add Balance ($):</label>
+        <input id="amount-input" type="number" min="0.01" step="0.01" placeholder="e.g. 10.00" />
+        <button id="add-btn" type="button">Add</button>
+        </div>
+    </div>
+  </div>
+
+  <!-- Action bar with left-aligned Restart -->
+  <div class="action-bar">
+    <button id="restart-btn">Restart Game</button>
+  </div>
+
+    <script>
+    const baseUserId = '{{ user_id }}';
+    const roomName   = '{{ room_name }}';
+
+    // Unique per tab
+    const rnd = (crypto?.getRandomValues
+        ? crypto.getRandomValues(new Uint32Array(1))[0].toString(36)
+        : Math.random().toString(36).slice(2));
+    const userId = `${baseUserId}-${rnd}`;
+
+    const chatSocket = new WebSocket(
+        (location.protocol === 'https:' ? 'wss://' : 'ws://') +
+        location.host + '/ws/chat/' + encodeURIComponent(roomName) +
+        '/?user_id=' + encodeURIComponent(userId)
+    );
+
+    chatSocket.onopen  = () => console.log('[WS] open', { roomName, userId });
+    chatSocket.onerror = (e) => console.error('[WS] error', e);
+
+    // Restart button → WS control
+    document.getElementById("restart-btn")?.addEventListener("click", () => {
+        if (chatSocket.readyState === WebSocket.OPEN) {
+        chatSocket.send(JSON.stringify({ type: "control", cmd: "restart_game" }));
+        } else {
+        alert("Connection not open yet. Try again in a moment.");
+        }
+    });
+
+    // Optional: Start New Round button
+    document.getElementById("start-round-btn")?.addEventListener("click", () => {
+        if (chatSocket.readyState === WebSocket.OPEN) {
+        chatSocket.send(JSON.stringify({ type: "control", cmd: "start_new_round" }));
+        }
+    });
+
+    // Single, unified onmessage handler (includes reset logic)
+    chatSocket.onmessage = function (e) {
+        const data = JSON.parse(e.data);
+        console.log("Received:", data);
+
+        // Hard reset from server
+        if (data.reset) {
+        document.getElementById('board-display').textContent = 'Board: (Waiting for cards...)';
+        document.getElementById('pot-display').textContent = 'Pot: $0';
+        document.getElementById('bet-display').textContent = 'Bet: $0';
+        document.getElementById('hand-display').innerHTML = '';
+        document.getElementById('player-stats').innerHTML = '';
+        return;
+        }
+
+        // Chat message
+        if (data.message) {
+        const chatLog = document.getElementById('chat-log');
+        const msg = document.createElement('div');
+        msg.textContent = data.message;
+        chatLog.appendChild(msg);
+        chatLog.scrollTop = chatLog.scrollHeight;
+        }
+
+        // Player update
+        if (data.player) {
+        updatePlayerStats(data.player);
+        if (data.player.hand) renderHand(data.player.hand);
+        }
+
+        // Board updates
+        if (data.board) {
+        renderBoard(data.board.board);
+        }
+
+        // Pot updates
+        if (data.pot) {
+        document.getElementById('pot-display').textContent = `Pot: $${data.pot.pot}`;
+        }
+
+        // Bet updates
+        if (data.bet) {
+        document.getElementById('bet-display').textContent = `Bet: $${data.bet.amount}`;
+        }
+    };
+
+    // Chat send
+    document.getElementById('send').onclick = function () {
+        const messageInputDom = document.getElementById('chat-message-input');
+        const message = messageInputDom.value;
+        if (chatSocket.readyState === WebSocket.OPEN) {
+        chatSocket.send(JSON.stringify({ 'message': message }));
+        }
+        messageInputDom.value = '';
+    };
+
+    function updatePlayerStats(player) {
+        const stats = document.getElementById('player-stats');
+        stats.innerHTML = `
+        <div class="player-stat"><strong>Name:</strong> ${player.name}</div>
+        <div class="player-stat"><strong>Balance:</strong> $${player.balance}</div>
+        <div class="player-stat"><strong>Current Bet:</strong> ${player.currentbet}</div>
+        <div class="player-stat"><strong>Hand Score:</strong> ${player.handscore}</div>
+        `;
+    }
+
+    // ==== Card rendering helpers ====
+    const CARD_BASE = "{% static 'cards/' %}";
+    const RANK_MAP = {'ACE':'ace','KING':'king','QUEEN':'queen','JACK':'jack','TEN':'10','NINE':'9','EIGHT':'8','SEVEN':'7','SIX':'6','FIVE':'5','FOUR':'4','THREE':'3','TWO':'2'};
+    const SUIT_MAP = {'SPADE':'spades','SPADES':'spades','HEART':'hearts','HEARTS':'hearts','DIAMOND':'diamonds','DIAMONDS':'diamonds','CLUB':'clubs','CLUBS':'clubs'};
+    const SUIT_SYMBOL = { spades: '♠', hearts: '♥', diamonds: '♦', clubs: '♣' };
+
+    function filenameFor(rankRaw, suitRaw) {
+        const rank = RANK_MAP[rankRaw.toUpperCase()];
+        const suit = SUIT_MAP[suitRaw.toUpperCase()];
+        return (rank && suit) ? `${rank}_of_${suit}.png` : null;
+    }
+    function prettyRank(rankRaw) {
+        const m = {'ACE':'Ace','KING':'King','QUEEN':'Queen','JACK':'Jack','TEN':'10','NINE':'9','EIGHT':'8','SEVEN':'7','SIX':'6','FIVE':'5','FOUR':'4','THREE':'3','TWO':'2'};
+        return m[rankRaw.toUpperCase()] || rankRaw;
+    }
+    function prettySuit(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+    function renderBoard(boardStr) {
+        const container = document.getElementById('board-display');
+        container.innerHTML = '';
+        const wrap = document.createElement('div');
+        wrap.className = 'board-cards';
+        container.appendChild(wrap);
+
+        const parts = boardStr.split(',').map(s => s.trim());
+        for (const part of parts) {
+        const m = part.match(/^([\w]+)\s+of\s+([\w]+)$/i);
+        if (!m) continue;
+        const [, rankRaw, suitRaw] = m;
+
+        const fname = filenameFor(rankRaw, suitRaw);
+        if (!fname) continue;
+
+        const rankLabel = prettyRank(rankRaw);
+        const suitKey = SUIT_MAP[suitRaw.toUpperCase()];
+        const suitNice = prettySuit(suitKey);
+        const symbol = SUIT_SYMBOL[suitKey];
+
+        const fig = document.createElement('figure');
+        fig.className = 'card';
+
+        const img = document.createElement('img');
+        img.src = CARD_BASE + fname;
+        img.alt = `${rankLabel} of ${suitNice}`;
+        img.className = 'card-img';
+        img.onerror = () => {
+            const span = document.createElement('span');
+            span.className = 'card-fallback';
+            span.textContent = `${rankLabel} of ${suitNice}`;
+            img.replaceWith(span);
+        };
+
+        const cap = document.createElement('figcaption');
+        cap.className = 'card-caption';
+        cap.textContent = `${rankLabel} of ${suitNice}${symbol ? ' ' + symbol : ''}`;
+
+        fig.appendChild(img);
+        fig.appendChild(cap);
+        wrap.appendChild(fig);
+        }
+    }
+
+    function fnameFromPair([rankRaw, suitRaw]) {
+        const rank = RANK_MAP[String(rankRaw).toUpperCase()];
+        const suit = SUIT_MAP[String(suitRaw).toUpperCase()];
+        return (rank && suit) ? `${rank}_of_${suit}.png` : null;
+    }
+    const SUIT_PRETTY = { spades:'Spades', hearts:'Hearts', diamonds:'Diamonds', clubs:'Clubs' };
+    const SUIT_EMOJI  = { spades:'♠', hearts:'♥', diamonds:'♦', clubs:'♣' };
+    function prettyFromPair([rankRaw, suitRaw]) {
+        const r = RANK_MAP[String(rankRaw).toUpperCase()];
+        const s = SUIT_MAP[String(suitRaw).toUpperCase()];
+        const rankNice = {'ace':'Ace','king':'King','queen':'Queen','jack':'Jack','10':'10','9':'9','8':'8','7':'7','6':'6','5':'5','4':'4','3':'3','2':'2'}[r];
+        const suitNice = s ? SUIT_PRETTY[s] : '';
+        const sym = s ? SUIT_EMOJI[s] : '';
+        return `${rankNice} of ${suitNice}${sym ? ' ' + sym : ''}`.trim();
+    }
+    function renderHand(handPairs) {
+        const container = document.getElementById('hand-display');
+        container.innerHTML = '';
+        if (!Array.isArray(handPairs) || handPairs.length === 0) {
+        container.textContent = 'Hand: (waiting...)';
+        return;
+        }
+        const wrap = document.createElement('div');
+        wrap.className = 'hand-cards';
+        container.appendChild(wrap);
+        for (const pair of handPairs) {
+        const fname = fnameFromPair(pair);
+        if (!fname) continue;
+
+        const fig = document.createElement('figure');
+        fig.className = 'card';
+
+        const img = document.createElement('img');
+        img.src = CARD_BASE + fname;
+        img.alt = prettyFromPair(pair);
+        img.className = 'card-img';
+        img.onerror = () => {
+            const fb = document.createElement('span');
+            fb.className = 'card-fallback';
+            fb.textContent = prettyFromPair(pair);
+            img.replaceWith(fb);
+        };
+
+        const cap = document.createElement('figcaption');
+        cap.className = 'card-caption';
+        cap.textContent = prettyFromPair(pair);
+
+        fig.appendChild(img);
+        fig.appendChild(cap);
+        wrap.appendChild(fig);
+        }
+    }
+
+    // === Add Balance (single, correct listener) ===
+    document.getElementById("add-btn")?.addEventListener("click", () => {
+        const field = document.getElementById("amount-input");
+        const amount = parseFloat(field.value);
+        if (isNaN(amount) || amount <= 0) { alert("Enter a valid positive number!"); return; }
+        if (chatSocket.readyState === WebSocket.OPEN) {
+        chatSocket.send(JSON.stringify({ type: "add_balance", amount }));
+        } else {
+        alert("Connection not open yet. Try again in a moment.");
+        }
+        field.value = "";
+    });
+
+    // Allow pressing Enter to send message
+    const input = document.getElementById('chat-message-input');
+    input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault(); // prevents newline in input
+        document.getElementById('send').click(); // triggers send button
+    }
+    });
+
+    </script>
+</body>
+</html>
