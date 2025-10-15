@@ -339,57 +339,55 @@ h2 {
    Mobile: stack everything; keep Restart at the bottom
    ========================= */
 @media (max-width: 700px) {
-  /* Make the page a single vertical flow */
+  /* Stack everything vertically */
   body {
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    padding: 8px;
   }
 
-  /* Flatten wrappers so we can control order */
-  .container { display: contents; }
-  #right-col { display: contents; }
-
-  /* Full width sections */
-  #board-display,
-  #hand-panel,
-  #chat-section,
-  #player-info,
-  #add-balance,
-  .action-bar {
-    width: 100%;
-    max-width: 100%;
-    margin-bottom: 12px;
+  /* Flatten wrappers */
+  .container,
+  #right-col {
+    display: contents;
   }
 
-  /* Explicit mobile order (no two columns) */
+  /* Ensure sections appear in correct order */
   #board-display { order: 1; }
   #hand-panel    { order: 2; }
   #chat-section  { order: 3; }
   #player-info   { order: 4; }
   #add-balance   { order: 5; }
+  .action-bar    { order: 6; }
 
-  /* Make the action bar come LAST */
+  /* Fix action bar behavior */
   .action-bar {
-    order: 99;
-    display: block;         /* ensure it participates in layout */
-    position: static;       /* not fixed */
-    padding: 0;             /* no extra chrome unless you want it */
-    background: transparent;
+    position: relative !important; /* anchor in layout, not float */
+    bottom: auto !important;
+    top: auto !important;
+    width: 100%;
+    margin-top: 16px;
+    margin-bottom: 16px;
+    text-align: center;
+    z-index: 1; /* ensure it’s not overlapping */
   }
 
-  /* Restart button: full-width, not floating */
+  /* Restart button inside the action bar */
   #restart-btn {
-    position: static !important;  /* override any fixed rules */
-    display: block;
+    position: static !important;
     width: 100%;
-    margin: 16px 0 24px;
-    z-index: auto;                /* don’t overlap */
-    /* keep your existing styling or tweak here */
+    display: block;
+    background-color: #f04e4e;
+    color: #fff;
     padding: 12px;
     border-radius: 8px;
     font-size: 16px;
+    border: none;
+    margin: 0 auto;
+  }
+
+  #restart-btn:hover {
+    background-color: #d93b3b;
   }
 }
 
