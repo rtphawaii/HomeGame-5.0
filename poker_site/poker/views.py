@@ -39,3 +39,14 @@ def room_view(request, room_name: str):
         request.session["user_id"] = user_id
 
     return render(request, "poker/index.html", {"user_id": user_id, "room_name": room_name})
+
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_exempt
+from .consumers import clear_all_rooms
+
+@csrf_exempt
+@require_POST
+def clear_rooms_view(request):
+    clear_all_rooms()
+    return JsonResponse({"ok": True, "message": "All rooms cleared."})

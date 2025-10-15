@@ -31,6 +31,31 @@ def room_state(name: str):
         }
     return ROOMS[name]
 
+def clear_all_rooms():
+    """
+    Completely clear all rooms, players, and game states.
+    """
+    for room in list(ROOMS.keys()):
+        state = ROOMS[room]
+        # Cancel any running game tasks
+        cancel_event = state.get("cancel_event")
+        if cancel_event:
+            cancel_event.set()
+        task = state.get("game_task")
+        if task and not task.done():
+            task.cancel()
+        # Clear pending inputs and futures
+        for fut in list(state.get("pending_inputs", {}).values()):
+            if not fut.done():
+                fut.set_result("cancelled")
+        if "pending_inputs_all" in state:
+            fut_all = state["pending_inputs_all"].pop("awaiting all", None)
+            if fut_all and not fut_all.done():
+                fut_all.set_result("cancelled")
+    ROOMS.clear()
+    print("♻️ All rooms cleared.")
+    return True
+
 
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
