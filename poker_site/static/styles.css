@@ -338,7 +338,7 @@ h2 {
 /* ---- MOBILE: pin action bar to bottom, keep Restart inside it ---- */
 @media (max-width: 700px) {
 
-    /* Make the page a single vertical flow */
+  /* Make the page a single vertical flow */
   body {
     display: flex;
     flex-direction: column;
@@ -362,8 +362,8 @@ h2 {
     max-width: 100%;
     margin-bottom: 12px;
   }
-  
-    /* Explicit mobile order (no two columns) */
+
+  /* Explicit mobile order (no two columns) */
   #board-display { order: 1; }
   #hand-panel    { order: 2; }
   #chat-section  { order: 3; }
@@ -371,7 +371,35 @@ h2 {
   #add-balance   { order: 5; }
   .action-bar    { order: 6; }
 
-  /* override any previous mobile rules that made it 'relative' */
+  /* Board and hand: horizontal layout, smaller images */
+  #board-display .board-cards,
+  #hand-display .hand-cards {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    gap: 4px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #board-display .card-img,
+  #hand-display .card-img {
+    height: 60px;             /* smaller height for mobile */
+    aspect-ratio: 5 / 7;
+    object-fit: contain;
+    scroll-snap-align: center;
+  }
+
+  #board-display .card-caption,
+  #hand-display .card-caption {
+    font-size: 0.75em;
+  }
+
+  /* Pin action bar to bottom */
   .action-bar {
     position: fixed !important;
     left: 0;
@@ -396,12 +424,9 @@ h2 {
     transform: none !important;
     box-shadow: none !important;
   }
-
-  /* if you previously set .container or #right-col to display: contents; that's fine.
-     The fixed bar ignores normal flow, so 'order' won't affect it. */
 }
 
-/* ---- DESKTOP: keep your original fixed bottom-left button (optional) ---- */
+/* ---- DESKTOP: keep your original fixed bottom-left button ---- */
 @media (min-width: 701px) {
   #restart-btn {
     position: fixed;
@@ -410,6 +435,7 @@ h2 {
     transform: none;
   }
 }
+
 
 
 
