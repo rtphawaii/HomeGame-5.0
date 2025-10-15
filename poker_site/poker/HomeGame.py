@@ -75,6 +75,9 @@ import copy
 #UPDATE 13C - Done
 # Can now play with two players, added position() function and modified preflop Round() and bets() 
 
+ #Update 13D - Done
+ # fix mobile add balance feature 
+
 #UPDATE 14 
 # For each time you send or maybe receive add to a game ledger, feed the entire ledger joined with separators to an open ai api and spit back a summary of the game play
 

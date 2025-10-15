@@ -76,14 +76,14 @@
         : Math.random().toString(36).slice(2));
     const userId = `${baseUserId}-${rnd}`;
 
-    const chatSocket = new WebSocket(
-        (location.protocol === 'https:' ? 'wss://' : 'ws://') +
-        location.host + '/ws/chat/' + encodeURIComponent(roomName) +
-        '/?user_id=' + encodeURIComponent(userId)
-    );
+    // Old websocket connection
+    // const chatSocket = new WebSocket(
+    //     (location.protocol === 'https:' ? 'wss://' : 'ws://') +
+    //     location.host + '/ws/chat/' + encodeURIComponent(roomName) +
+    //     '/?user_id=' + encodeURIComponent(userId)
+    // );
 
-    chatSocket.onopen  = () => console.log('[WS] open', { roomName, userId });
-    chatSocket.onerror = (e) => console.error('[WS] error', e);
+    
 
     // Restart button → WS control
     document.getElementById("restart-btn")?.addEventListener("click", () => {
@@ -100,6 +100,48 @@
         chatSocket.send(JSON.stringify({ type: "control", cmd: "start_new_round" }));
         }
     });
+
+        // New websocket connection that stop disconnecting for mobile
+    function createSocket() {
+    const socket = new WebSocket(
+        (location.protocol === 'https:' ? 'wss://' : 'ws://') +
+        location.host + '/ws/chat/' + encodeURIComponent(roomName) +
+        '/?user_id=' + encodeURIComponent(userId)
+    );
+
+    socket.onopen = () => {
+        console.log('[WS] Connected ✅');
+        const chatLog = document.getElementById('chat-log');
+        if (chatLog) {
+        const msg = document.createElement('div');
+        msg.textContent = '[System] Reconnected to server ✅';
+        chatLog.appendChild(msg);
+        }
+    };
+
+    socket.onclose = (e) => {
+        console.warn('[WS] Closed. Retrying in 3s...', e.reason);
+        setTimeout(() => {
+        chatSocket = createSocket(); // recursively reconnect
+        }, 3000);
+    };
+
+    socket.onerror = (err) => {
+        console.error('[WS] Error:', err);
+        socket.close();
+    };
+
+    socket.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        handleSocketMessage(data);
+    };
+
+    return socket;
+    }
+
+    // Replace your old socket variable
+    let chatSocket = createSocket();
+
 
     // Single, unified onmessage handler (includes reset logic)
     chatSocket.onmessage = function (e) {
