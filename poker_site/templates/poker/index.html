@@ -284,17 +284,30 @@
     }
 
     // === Add Balance (single, correct listener) ===
-    document.getElementById("add-btn")?.addEventListener("click", () => {
+    const addBtn = document.getElementById("add-btn");
+    if (addBtn) {
+    const addHandler = () => {
         const field = document.getElementById("amount-input");
         const amount = parseFloat(field.value);
-        if (isNaN(amount) || amount <= 0) { alert("Enter a valid positive number!"); return; }
+        if (isNaN(amount) || amount <= 0) { 
+        alert("Enter a valid positive number!"); 
+        return; 
+        }
         if (chatSocket.readyState === WebSocket.OPEN) {
         chatSocket.send(JSON.stringify({ type: "add_balance", amount }));
         } else {
         alert("Connection not open yet. Try again in a moment.");
         }
         field.value = "";
+    };
+
+    addBtn.addEventListener("click", addHandler);
+    addBtn.addEventListener("touchend", (e) => {
+        e.preventDefault();  // prevents double firing
+        addHandler();
     });
+    }
+
 
     // Allow pressing Enter to send message
     const input = document.getElementById('chat-message-input');
