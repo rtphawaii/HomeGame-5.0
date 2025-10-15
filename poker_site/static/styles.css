@@ -335,18 +335,16 @@ h2 {
 }
 .add-balance button:hover { background: var(--accent-light); }
 
-/* =========================
-   Mobile: action bar fixed at bottom
-   ========================= */
+/* ---- MOBILE: pin action bar to bottom, keep Restart inside it ---- */
 @media (max-width: 700px) {
-  /* Make room so content isn’t hidden behind the bar */
+  /* room so content isn't hidden by the bar */
   body {
     padding-bottom: calc(64px + env(safe-area-inset-bottom));
   }
 
-  /* Fixed bottom bar */
+  /* override any previous mobile rules that made it 'relative' */
   .action-bar {
-    position: fixed;
+    position: fixed !important;
     left: 0;
     right: 0;
     bottom: 0;
@@ -358,28 +356,32 @@ h2 {
     gap: 8px;
     justify-content: center;
     align-items: center;
-    z-index: 999; /* above cards/chat */
+    z-index: 9999;
   }
 
-  /* Make buttons fit nicely across */
-  .action-bar button,
-  .action-bar .btn {
-    flex: 1 1 0;
-  }
-
-  /* If your restart button is inside the action bar, keep it inline */
+  /* keep the button inline within the bar on mobile */
   #restart-btn {
     position: static !important;
     width: 100%;
-    margin: 0;
-    transform: none;
-    box-shadow: none;
+    margin: 0 !important;
+    transform: none !important;
+    box-shadow: none !important;
   }
 
-  /* If your restart button is NOT inside .action-bar and still fixed elsewhere,
-     uncomment the next line to hide it on mobile to avoid overlap */
-  /* #restart-btn { display: none !important; } */
+  /* if you previously set .container or #right-col to display: contents; that's fine.
+     The fixed bar ignores normal flow, so 'order' won't affect it. */
 }
+
+/* ---- DESKTOP: keep your original fixed bottom-left button (optional) ---- */
+@media (min-width: 701px) {
+  #restart-btn {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    transform: none;
+  }
+}
+
 
 
 
