@@ -75,7 +75,7 @@ import copy
 #UPDATE 13C - Done
 # Can now play with two players, added position() function and modified preflop Round() and bets() 
 
- #Update 13D - Done
+ #Update 13D - Pending
  # fix mobile add balance feature 
 
 #UPDATE 14 
@@ -858,51 +858,46 @@ class Table():
                     }})
     
     async def player_info_update(self):
-        #sends an update to player info
         for player in self.order:
             print(f"Sending stats to {player.player_id}:", player.balance)
-            rank1, suit1 = player.hand[0]
-            rank2, suit2 = player.hand[1]
-            rank1str=str(rank1.name)
-            suit1str=str(suit1.name)
-            rank2str=str(rank2.name)
-            suit2str=str(suit2.name)
-            hand=[(rank1str,suit1str),(rank2str,suit2str)]
-            await self.send_player_info(player.player_id, {
-                "player": {
-                    "user_id": player.player_id, 
-                    "name": player.name,
-                    "balance": player.balance,
-                    "currentbet": player.currentbet,
-                    "handscore": player.handscore,
-                    "hand": [(str(r), str(s)) for r, s in hand]
-                }
-            })
-            print(f'info update sent to player {player}')
-    
-    async def player_info_update_all(self):
-        print('sending player update to: ',self.list)
-        #sends an update to player info
-        for player in self.perma_list:
-            print(f"Sending stats to {player.player_id}:", player.balance)
-            rank1, suit1 = player.hand[0]
-            rank2, suit2 = player.hand[1]
-            rank1str=str(rank1.name)
-            suit1str=str(suit1.name)
-            rank2str=str(rank2.name)
-            suit2str=str(suit2.name)
-            hand=[(rank1str,suit1str),(rank2str,suit2str)]
+
+            hand_pairs = []
+            if len(player.hand) >= 2:
+                (rank1, suit1), (rank2, suit2) = player.hand[:2]
+                hand_pairs = [(rank1.name, suit1.name), (rank2.name, suit2.name)]
+
             await self.send_player_info(player.player_id, {
                 "player": {
                     "user_id": player.player_id,
                     "name": player.name,
                     "balance": player.balance,
                     "currentbet": player.currentbet,
-                    "handscore": player.handscore,
-                    "hand": [(str(r), str(s)) for r, s in hand]
+                    "handscore": getattr(player, "handscore", None),
+                    "hand": hand_pairs,
                 }
             })
-            print(f'info update sent to player {player}')
+
+
+    async def player_info_update_all(self):
+        for player in self.perma_list:
+            print(f"Sending stats to {player.player_id}:", player.balance)
+
+            hand_pairs = []
+            if len(player.hand) >= 2:
+                (rank1, suit1), (rank2, suit2) = player.hand[:2]
+                hand_pairs = [(rank1.name, suit1.name), (rank2.name, suit2.name)]
+
+            await self.send_player_info(player.player_id, {
+                "player": {
+                    "user_id": player.player_id,
+                    "name": player.name,
+                    "balance": player.balance,
+                    "currentbet": player.currentbet,
+                    "handscore": getattr(player, "handscore", None),
+                    "hand": hand_pairs,
+                }
+            })
+
 
     async def update_handscore(self):
         for player in self.perma_list:
@@ -1328,7 +1323,10 @@ class Player():
                     await self.table.send_to_user(self.player_id,"Invalid input. Please enter a valid number.")
 
     async def add_balance(self, amount):
-        self.balance = float(self.balance) + float(amount)
+        try:
+            self.balance = float(self.balance) + float(amount)
+        except (ValueError, TypeError):
+            return
         await self.table.player_info_update_all()
 
 import asyncio

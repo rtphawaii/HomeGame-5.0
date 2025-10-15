@@ -87,18 +87,18 @@
 
     // Restart button → WS control
     document.getElementById("restart-btn")?.addEventListener("click", () => {
-        if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
+    if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
         window.chatSocket.send(JSON.stringify({ type: "control", cmd: "restart_game" }));
-        }
+    } else {
         alert("Connection not open yet. Try again in a moment.");
-        }
-    );
+    }
+    });
 
     // Optional: Start New Round button
     document.getElementById("start-round-btn")?.addEventListener("click", () => {
-        if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
+    if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
         window.chatSocket.send(JSON.stringify({ type: "control", cmd: "start_new_round" }));
-        }
+    }
     });
 
     function handleSocketMessage(data) {
@@ -196,13 +196,13 @@
 
     // Chat send
     document.getElementById('send').onclick = function () {
-        const messageInputDom = document.getElementById('chat-message-input');
-        const message = messageInputDom.value;
+        const field = document.getElementById('chat-message-input');
+        const message = field.value;
         if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
-        window.chatSocket.send(JSON.stringify({ message }));
+            window.chatSocket.send(JSON.stringify({ message }));
         }
-        messageInputDom.value = '';
-    };
+        field.value = '';
+        };
 
     function updatePlayerStats(player) {
         const stats = document.getElementById('player-stats');
@@ -335,35 +335,25 @@
     const field = document.getElementById("amount-input");
     if (!btn || !field) return;
 
-    // ensure it's not treated as a submit button
-    btn.type = "button";
+    btn.type = "button"; // don’t submit anything
 
     const sendAdd = () => {
-        const raw = (field.value || "").trim();
-        const amount = parseFloat(raw);
+        const amount = parseFloat((field.value || "").trim());
         if (isNaN(amount) || amount <= 0) {
         alert("Enter a valid positive number!");
         return;
         }
-
         if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
         console.log("[AddBalance] sending", amount);
         window.chatSocket.send(JSON.stringify({ type: "add_balance", amount }));
         field.value = "";
         } else {
-        console.warn("[AddBalance] socket not open");
         alert("Connection not open yet. Try again in a moment.");
         }
     };
 
-    // Desktop click
     btn.addEventListener("click", sendAdd);
-
-    // Mobile tap (avoid double-fire)
-    btn.addEventListener("touchend", (e) => {
-        e.preventDefault();   // important on iOS
-        sendAdd();
-    }, { passive: false });
+    btn.addEventListener("touchend", (e) => { e.preventDefault(); sendAdd(); }, { passive: false });
     })();
 
 
