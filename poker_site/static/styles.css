@@ -385,16 +385,6 @@ h2 {
 
   #player-info { max-height: 220px; overflow-y: auto; }
 
-  /* Restart button: full-width at bottom on mobile */
-  #restart-btn {
-    position: static;
-    width: 100%;
-    padding: 10px;
-    font-size: 14px;
-    margin-top: 8px;
-  }
-}
-
 /* =========================
    Fix restart button position for mobile
    ========================= */
