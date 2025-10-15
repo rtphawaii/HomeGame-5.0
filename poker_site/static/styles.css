@@ -334,101 +334,128 @@ h2 {
   font-weight: 600;
 }
 .add-balance button:hover { background: var(--accent-light); }
-
 /* =========================
-   📱 MOBILE RESPONSIVE (max-width: 700px)
+   📱 OPTIMIZED MOBILE LAYOUT (portrait ≤700px)
    ========================= */
 @media (max-width: 700px) {
 
   body {
-    padding: 10px;
+    padding: 8px;
+    overflow-x: hidden;
+  }
+
+  .site-header {
+    margin-bottom: 8px;
+  }
+
+  .logo {
+    width: 70px;
   }
 
   .container {
     flex-direction: column;
-    gap: 20px;
+    gap: 10px;
     width: 100%;
+    align-items: stretch;
   }
 
-  #chat-section,
-  #player-info,
-  #right-col {
-    width: 100%;
-  }
-
-  /* 🃏 Board and HUD */
+  /* 🎴 Board first, full width */
   #board-display {
     width: 100%;
-    padding: 8px;
+    padding: 6px;
+    margin-bottom: 8px;
     font-size: 1em;
   }
-
-  #board-display .card-img,
-  #hand-display .card-img {
-    height: 60px;       /* smaller card size */
+  #board-display .board-cards {
+    gap: 4px;
+  }
+  #board-display .card-img {
+    height: 50px;
   }
 
+  /* 🪙 Pot and Bet HUD stack tightly */
   .hud-row {
-    flex-direction: column;
+    flex-direction: row;
+    justify-content: space-between;
     width: 100%;
     gap: 8px;
   }
-
-  #pot-display,
-  #bet-display {
-    font-size: 1em;
+  .hud-row #pot-display,
+  .hud-row #bet-display {
+    flex: 1;
+    font-size: 0.95em;
     padding: 6px;
   }
 
-  /* 💬 Chat box */
+  /* ✋ Hand display centered and tighter */
+  #hand-display .hand-cards {
+    gap: 3px;
+  }
+  #hand-display .card-img {
+    height: 55px;
+  }
+
+  /* 💬 Chat section: collapsible look */
+  #chat-section {
+    order: 3;
+    width: 100%;
+  }
   #chat-log {
-    height: 200px;
+    height: 160px;
     font-size: 0.9em;
   }
-
   #chat-message-input {
-    width: 65%;
+    width: 70%;
     font-size: 0.9em;
   }
-
   #send {
     font-size: 0.9em;
     padding: 8px 10px;
   }
 
-  /* 🧑 Player info + hand */
-  #player-info,
-  #hand-display {
+  /* 🧑 Player info under board, smaller */
+  #right-col {
+    order: 2;
+    width: 100%;
+    gap: 8px;
+  }
+  #player-info {
     height: auto;
+    max-height: 200px;
+    overflow-y: auto;
     font-size: 0.9em;
   }
 
-  .player-stat {
-    font-size: 0.9em;
-  }
-
-  /* 💰 Add Balance box */
+  /* 💰 Add balance compact */
   .add-balance {
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: row;
+    justify-content: space-between;
+    flex-wrap: wrap;
     width: 100%;
+    gap: 6px;
   }
-
-  .add-balance input[type="number"] {
-    width: 100%;
+  .add-balance label {
+    font-size: 0.9em;
   }
-
+  .add-balance input {
+    flex: 1;
+  }
   .add-balance button {
-    width: 100%;
-    padding: 8px;
+    flex: 0 0 80px;
+    font-size: 0.9em;
   }
 
-  /* 🔁 Restart button */
+  /* 🔁 Restart button pinned bottom */
   #restart-btn {
-    position: static;
-    width: 100%;
-    margin-top: 12px;
+    position: fixed;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    width: calc(100% - 24px);
     font-size: 14px;
     padding: 10px;
+    border-radius: 10px;
+    z-index: 100;
   }
 }
+
