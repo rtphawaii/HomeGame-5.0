@@ -330,27 +330,41 @@
     }
 
     // === Add Balance (single, correct listener) ===
-    const addBtn = document.getElementById("add-btn");
-    if (addBtn) {
-    const addHandler = () => {
-        const field = document.getElementById("amount-input");
-        const amount = parseFloat(field.value);
-        if (isNaN(amount) || amount <= 0) { 
-        alert("Enter a valid positive number!"); 
-        return; 
+    (() => {
+    const btn   = document.getElementById("add-btn");
+    const field = document.getElementById("amount-input");
+    if (!btn || !field) return;
+
+    // ensure it's not treated as a submit button
+    btn.type = "button";
+
+    const sendAdd = () => {
+        const raw = (field.value || "").trim();
+        const amount = parseFloat(raw);
+        if (isNaN(amount) || amount <= 0) {
+        alert("Enter a valid positive number!");
+        return;
         }
+
         if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
+        console.log("[AddBalance] sending", amount);
         window.chatSocket.send(JSON.stringify({ type: "add_balance", amount }));
-        }
         field.value = "";
+        } else {
+        console.warn("[AddBalance] socket not open");
+        alert("Connection not open yet. Try again in a moment.");
+        }
     };
 
-    addBtn.addEventListener("click", addHandler);
-    addBtn.addEventListener("touchend", (e) => {
-        e.preventDefault();  // prevents double firing
-        addHandler();
-    });
-    }
+    // Desktop click
+    btn.addEventListener("click", sendAdd);
+
+    // Mobile tap (avoid double-fire)
+    btn.addEventListener("touchend", (e) => {
+        e.preventDefault();   // important on iOS
+        sendAdd();
+    }, { passive: false });
+    })();
 
 
     // Allow pressing Enter to send message
