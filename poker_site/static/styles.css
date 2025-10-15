@@ -334,3 +334,101 @@ h2 {
   font-weight: 600;
 }
 .add-balance button:hover { background: var(--accent-light); }
+
+/* =========================
+   📱 MOBILE RESPONSIVE (max-width: 700px)
+   ========================= */
+@media (max-width: 700px) {
+
+  body {
+    padding: 10px;
+  }
+
+  .container {
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+  }
+
+  #chat-section,
+  #player-info,
+  #right-col {
+    width: 100%;
+  }
+
+  /* 🃏 Board and HUD */
+  #board-display {
+    width: 100%;
+    padding: 8px;
+    font-size: 1em;
+  }
+
+  #board-display .card-img,
+  #hand-display .card-img {
+    height: 60px;       /* smaller card size */
+  }
+
+  .hud-row {
+    flex-direction: column;
+    width: 100%;
+    gap: 8px;
+  }
+
+  #pot-display,
+  #bet-display {
+    font-size: 1em;
+    padding: 6px;
+  }
+
+  /* 💬 Chat box */
+  #chat-log {
+    height: 200px;
+    font-size: 0.9em;
+  }
+
+  #chat-message-input {
+    width: 65%;
+    font-size: 0.9em;
+  }
+
+  #send {
+    font-size: 0.9em;
+    padding: 8px 10px;
+  }
+
+  /* 🧑 Player info + hand */
+  #player-info,
+  #hand-display {
+    height: auto;
+    font-size: 0.9em;
+  }
+
+  .player-stat {
+    font-size: 0.9em;
+  }
+
+  /* 💰 Add Balance box */
+  .add-balance {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .add-balance input[type="number"] {
+    width: 100%;
+  }
+
+  .add-balance button {
+    width: 100%;
+    padding: 8px;
+  }
+
+  /* 🔁 Restart button */
+  #restart-btn {
+    position: static;
+    width: 100%;
+    margin-top: 12px;
+    font-size: 14px;
+    padding: 10px;
+  }
+}
