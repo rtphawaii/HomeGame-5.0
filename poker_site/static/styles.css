@@ -2,22 +2,22 @@
    Global Theme Variables (Light Minimal)
    ========================= */
 :root {
-  --bg-color: #ffffff;       /* pure white background */
-  --text-color: #1a1a1a;     /* near-black for readability */
-  --surface-1: #f5f5f5;      /* light grey cards/panels */
-  --surface-2: #e0e0e0;      /* slightly darker grey */
-  --border-color: #cccccc;   /* neutral grey border */
-  --accent: #333333;         /* dark grey for accents */
-  --accent-light: #9f9e9e;   /* medium grey for hover */
+  --bg-color: #ffffff;
+  --text-color: #1a1a1a;
+  --surface-1: #f5f5f5;
+  --surface-2: #e0e0e0;
+  --border-color: #cccccc;
+  --accent: #333333;
+  --accent-light: #9f9e9e;
+
+  /* ✅ Added (were missing) */
+  --accent-warm: #6b6b6b;
+  --shadow-accent: rgba(0,0,0,.12);
+  --shadow-accent-warm: rgba(0,0,0,.18);
+  --inverse-text-color: #ffffff;
 }
 
-input,
-button,
-textarea,
-select {
-  font-size: 16px !important; /* prevents Safari zoom */
-}
-
+input, button, textarea, select { font-size: 16px !important; }
 
 /* =========================
    Base Layout
@@ -32,48 +32,26 @@ body {
   padding: 20px;
 }
 
-.container {
-  display: flex;
-  justify-content: center;
-  gap: 40px;
-  width: 90%;
-}
+.container { display: flex; justify-content: center; gap: 40px; width: 90%; }
+#chat-section, #player-info { flex: 1; }
 
-#chat-section, #player-info {
-  flex: 1;
-}
-
-h2 {
-  color: var(--accent);
-  margin-bottom: 15px;
-  font-weight: 600;
-}
-
-.site-header {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 16px 0 8px;
-}
-
-.logo {
-  width: clamp(80px, 15vw, 140px);
-}
+h2 { color: var(--accent); margin-bottom: 15px; font-weight: 600; }
+.site-header { display: flex; justify-content: center; align-items: center; padding: 16px 0 8px; }
+.logo { width: clamp(80px, 15vw, 140px); }
 
 /* =========================
-   Display Panels
+   HUD (Pot/Bet)
    ========================= */
-
 .hud-row {
   display: flex;
   gap: 12px;
   justify-content: center;
   align-items: stretch;
-  width: 80%;          /* was on the cards; move it to the row */
+  width: 80%;
   margin-bottom: 20px;
 }
 
-/* DRY up shared styles */
+/* Single source of truth for Pot/Bet cards */
 .hud-row #pot-display,
 .hud-row #bet-display {
   background-color: var(--surface-2);
@@ -86,56 +64,27 @@ h2 {
   font-size: 1.1em;
   letter-spacing: 0.3px;
   box-shadow: 0 0 8px var(--shadow-accent-warm);
-
-  /* key bits for side-by-side */
-  flex: 1 1 0;         /* equal width cards */
-  margin: 0;           /* row handles spacing */
+  flex: 1 1 0;
+  margin: 0;
 }
 
 /* Responsive: stack on small screens */
-@media (max-width: 640px) {
-  .hud-row { flex-direction: column; width: 100%; }
-}
+@media (max-width: 640px) { .hud-row { flex-direction: column; width: 100%; } }
 
-#pot-display {
-  background-color: var(--surface-2);
-  border: 1px solid var(--accent-warm);
-  color: var(--text-color);
-  padding: 8px 16px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  font-weight: 600;
-  text-align: center;
-  font-size: 1.1em;
-  letter-spacing: 0.3px;
-  box-shadow: 0 0 8px var(--shadow-accent-warm);
-}
-
-#bet-display {
-  background-color: var(--surface-2);
-  border: 1px solid var(--accent-warm);
-  color: var(--text-color);
-  padding: 8px 16px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  font-weight: 600;
-  text-align: center;
-  font-size: 1.1em;
-  letter-spacing: 0.3px;
-  box-shadow: 0 0 8px var(--shadow-accent-warm);
-}
-
+/* =========================
+   Board
+   ========================= */
 #board-display {
   background-color: var(--surface-2);
   border: 1px solid var(--accent);
   color: var(--text-color);
-  padding: 6px 18px;
+  padding: 6px 12px;            /* slightly tighter */
   border-radius: 8px;
   margin-bottom: 20px;
   font-weight: 600;
   width: 80%;
   text-align: center;
-  font-size: 1.1em;
+  font-size: 1.05em;
   letter-spacing: 0.3px;
   box-shadow: 0 0 8px var(--shadow-accent);
 }
@@ -143,18 +92,19 @@ h2 {
 #board-display .board-cards {
   display: flex;
   justify-content: center;
-  gap: 2px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
+#board-display .card { display: flex; flex-direction: column; align-items: center; }
 #board-display .card-img {
-  height: 90px;            /* tweak to taste */
+  height: 90px;
   aspect-ratio: 5 / 7;
   object-fit: contain;
-  border-radius: 2px;
+  border-radius: 4px;
   box-shadow: 0 2px 6px rgba(0,0,0,.2);
 }
-
+#board-display .card-caption { margin-top: 6px; font-size: .85em; opacity: .9; }
 #board-display .card-fallback {
   display: inline-block;
   padding: 6px 8px;
@@ -163,25 +113,6 @@ h2 {
   font-size: .9em;
   opacity: .85;
 }
-
-#board-display .board-cards {
-  display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;
-}
-#board-display .card {
-  display: flex; flex-direction: column; align-items: center;
-}
-#board-display .card-img {
-  height: 90px; aspect-ratio: 5 / 7; object-fit: contain;
-  border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,.2);
-}
-#board-display .card-caption {
-  margin-top: 6px; font-size: .85em; opacity: .9;
-}
-#board-display .card-fallback {
-  display: inline-block; padding: 6px 8px; border: 1px dashed var(--accent);
-  border-radius: 6px; font-size: .9em; opacity: .85;
-}
-
 
 /* =========================
    Chat Section
@@ -204,8 +135,17 @@ h2 {
   border-radius: 5px;
 }
 
+/* ✅ Layout for controls */
+.chat-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 #chat-message-input {
-  width: 70%;
+  flex: 1 1 280px;
+  min-width: 200px;
   padding: 10px;
   background-color: var(--surface-1);
   border: 1px solid var(--border-color);
@@ -220,7 +160,6 @@ h2 {
   border: none;
   border-radius: 6px;
   font-weight: 600;
-  margin-left: 10px;
   cursor: pointer;
 }
 
@@ -231,92 +170,58 @@ h2 {
   background-color: #ff5252;
   color: white;
   border: none;
-  padding: 8px 12px;
-  margin-left: 8px;
+  padding: 10px 14px;
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background .2s;
 }
-#all-in-btn:disabled {
-  background-color: #999;
-  cursor: not-allowed;
-}
-#all-in-btn:hover:not(:disabled) {
-  background-color: #ff3030;
-}
-
+#all-in-btn:disabled { background-color: #999; cursor: not-allowed; }
+#all-in-btn:hover:not(:disabled) { background-color: #ff3030; }
 
 /* =========================
-   Player Info
+   Right Column / Panels
    ========================= */
-#player-info {
-  background-color: var(--surface-1);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 15px;
-  height: 320px;
-  overflow-y: auto;
-}
-
-.player-stat {
-  margin-bottom: 10px;
-  padding-bottom: 5px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-/* Right column: stack the two panels */
-#right-col {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-/* Shared panel look (same as your player-info box) */
+#right-col { flex: 1; display: flex; flex-direction: column; gap: 20px; }
 .panel {
   background-color: var(--surface-1);
   border: 1px solid var(--border-color);
   border-radius: 10px;
-  padding: 15px;
+  padding: 12px;              /* tighter */
 }
 
-/* Keep scroll only for player info if desired */
-#player-info {
-  height: 320px;
-  overflow-y: auto;
-}
+/* Player info scroll */
+#player-info { height: 320px; overflow-y: auto; }
+.player-stat { margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid var(--border-color); }
 
-/* Hand images already styled; just render inside #hand-display */
+/* ===== Hand (tighter fit) ===== */
 #hand-display .hand-cards {
   display: flex;
   justify-content: center;
-  gap: 5px;
+  gap: 4px;                    /* tighter */
   flex-wrap: wrap;
-  margin-top: 8px;
+  margin-top: 6px;
 }
-#hand-display .card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
+#hand-display .card { display: flex; flex-direction: column; align-items: center; }
 #hand-display .card-img {
-  height: 90px;
+  height: 86px;                /* slightly smaller */
   aspect-ratio: 5 / 7;
   object-fit: contain;
-  border-radius: 6px;
+  border-radius: 4px;
   box-shadow: 0 2px 6px rgba(0,0,0,.2);
 }
-#hand-display .card-caption { margin-top: 6px; font-size: .85em; opacity: .9; }
+#hand-display .card-caption { margin-top: 4px; font-size: .82em; opacity: .9; }
 #hand-display .card-fallback {
   display: inline-block; padding: 6px 8px; border: 1px dashed var(--accent);
   border-radius: 6px; font-size: .9em; opacity: .85;
 }
-/* Format and center and align restart button */
-/* Restart button: bottom-left */
+
+/* =========================
+   Restart Button / Action Bar
+   ========================= */
 #restart-btn {
   position: fixed;
   bottom: 20px;
-  left: 20px;              /* ← was 50% with translateX */
+  left: 20px;
   transform: none;
   background-color: #f04e4e;
   color: #fff;
@@ -326,77 +231,36 @@ h2 {
   font-size: 16px;
   cursor: pointer;
   box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-  transition: background-color 0.2s ease, transform 0.1s ease;
+  transition: background-color .2s ease, transform .1s ease;
 }
-
 #restart-btn:hover { background-color: #d93b3b; transform: scale(1.05); }
 #restart-btn:active { transform: scale(0.97); }
 
-
-/* add balance box */
-
-.add-balance {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-top: 12px;
-}
-
-.add-balance label {
-  font-weight: 600;
-}
-
+/* Add balance */
+.add-balance { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+.add-balance label { font-weight: 600; }
 .add-balance input[type="number"] {
-  max-width: 140px;
-  padding: 6px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--surface-1);
-  color: var(--text-color);
+  max-width: 140px; padding: 6px 8px; border: 1px solid var(--border-color);
+  border-radius: 6px; background: var(--surface-1); color: var(--text-color);
 }
-
 .add-balance button {
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--border-color);
-  background: var(--surface-2);
-  cursor: pointer;
-  font-weight: 600;
+  padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color);
+  background: var(--surface-2); cursor: pointer; font-weight: 600;
 }
 .add-balance button:hover { background: var(--accent-light); }
+#add-balance { position: relative; z-index: 2; }
 
-#add-balance {
-  position: relative;
-  z-index: 2;
-}
-
-/* ---- MOBILE: stacked layout, fixed bottom bar ---- */
+/* ---- MOBILE ---- */
 @media (max-width: 700px) {
-
   body {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    padding: 8px;
-    padding-bottom: 80px; /* space for fixed bar */
-    overflow-x: hidden;
+    display: flex; flex-direction: column; align-items: stretch;
+    padding: 8px; padding-bottom: 80px; overflow-x: hidden;
   }
 
-  .container,
-  #right-col {
-    display: contents;
-  }
+  .container, #right-col { display: contents; }
 
-  #board-display,
-  #hand-panel,
-  #chat-section,
-  #player-info,
-  #add-balance,
-  .action-bar {
-    width: 100%;
-    max-width: 100%;
-    margin-bottom: 12px;
-    box-sizing: border-box;
+  #board-display, #hand-panel, #chat-section, #player-info, #add-balance, .action-bar {
+    width: 100%; max-width: 100%; margin-bottom: 12px; box-sizing: border-box;
   }
 
   #board-display { order: 1; }
@@ -406,128 +270,68 @@ h2 {
   #add-balance   { order: 5; }
   .action-bar    { order: 6; }
 
-  /* ===== Board & Hand Panels ===== */
-  #board-display,
-  #hand-panel {
-    width: 95%;
-    margin: 0 auto 12px;
-    padding: 10px;
+  #board-display, #hand-panel {
+    width: 95%; margin: 0 auto 12px; padding: 10px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 120px;
+  }
+
+  #board-display .board-cards, #hand-display .hand-cards {
+    display: flex; flex-wrap: nowrap; justify-content: center; align-items: center;
+    overflow-x: auto; gap: 6px; padding: 6px 0; width: 100%;
+  }
+
+  #board-display .card-img, #hand-display .card-img {
+    height: 70px; aspect-ratio: 5 / 7; object-fit: contain;
+  }
+
+  #hand-panel { max-height: 180px; overflow-y: visible; }
+
+  .chat-controls { gap: 8px; }
+  #chat-log { height: 200px; min-height: 160px; overflow-y: auto; margin-bottom: 8px; }
+  #chat-message-input, #send { width: 100%; box-sizing: border-box; }
+
+    .chat-controls {
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center; /* centers cards vertically */
-    min-height: 120px;       /* ensures background box visible */
-  }
-
-  /* Smaller, centered card rows */
-  #board-display .board-cards,
-  #hand-display .hand-cards {
-    display: flex;
-    flex-wrap: nowrap;
-    justify-content: center;
-    align-items: center;      /* centers vertically inside box */
-    overflow-x: auto;
-    gap: 6px;
-    padding: 6px 0;
-    width: 100%;
-  }
-
-  /* Card image size */
-  #board-display .card-img,
-  #hand-display .card-img {
-    height: 70px;
-    aspect-ratio: 5 / 7;
-    object-fit: contain;
-  }
-
-  /* Fix hand panel height */
-  #hand-panel {
-    max-height: 180px;
-    overflow-y: visible;
-  }
-
-  /* ===== Chat Section (Mobile) ===== */
-  #chat-section {
-    display: flex;
-    flex-direction: column;
+    flex-direction: column;  /* stack vertically */
     align-items: stretch;
-    width: 95%;
-    margin: 0 auto 12px;
+    gap: 8px;
   }
 
-  #chat-log {
-    height: 200px;            /* Adjust as needed */
-    min-height: 160px;
-    overflow-y: auto;
-    margin-bottom: 8px;       /* ✅ space below to avoid overlap */
-  }
-
-  /* Make input + send stack neatly below the chat log */
-  #chat-message-input {
-    flex: 1;
+  #chat-message-input,
+  #send,
+  #all-in-btn {
     width: 100%;
-    margin-bottom: 8px;
     box-sizing: border-box;
-  }
-
-  #send {
-    width: 100%;
-    padding: 10px;
     margin: 0;
-    box-sizing: border-box;
   }
 
+  #send, #all-in-btn {
+    padding: 10px;
+    border-radius: 6px;
+    font-weight: 600;
+  }
 
-  /* ===== Action Bar (Restart) ===== */
   .action-bar {
-    position: fixed !important;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    padding: 10px 12px;
-    background: var(--surface-1);
-    border-top: 1px solid var(--border-color);
+    position: fixed !important; left: 0; right: 0; bottom: 0; padding: 10px 12px;
+    background: var(--surface-1); border-top: 1px solid var(--border-color);
     box-shadow: 0 -6px 16px rgba(0,0,0,.12);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 9999;
+    display: flex; justify-content: center; align-items: center; z-index: 9999;
   }
-
   #restart-btn {
-    position: static !important;
-    width: 100%;
-    margin: 0 !important;
-    transform: none !important;
-    box-shadow: none !important;
+    position: static !important; width: 100%; margin: 0 !important; transform: none !important; box-shadow: none !important;
   }
 }
 
 /* ---- DESKTOP ---- */
 @media (min-width: 701px) {
-  #restart-btn {
-    position: fixed;
-    bottom: 20px;
-    left: 20px;
-    transform: none;
-  }
+  #restart-btn { position: fixed; bottom: 20px; left: 20px; transform: none; }
 }
-
-
 
 /* =========================
    iOS Safari Zoom Prevention
    ========================= */
 @supports (-webkit-touch-callout: none) {
-  input,
-  button {
-    font-size: 16px !important;
-  }
-
-  body {
-    -webkit-text-size-adjust: 100%; /* prevents Safari auto-scaling */
-  }
+  input, button { font-size: 16px !important; }
+  body { -webkit-text-size-adjust: 100%; }
 }
-
-
-
