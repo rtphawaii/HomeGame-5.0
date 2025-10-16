@@ -150,11 +150,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     fut.set_result("start new round")
                 return
 
+        #add balance
         if msg_type == "add_balance":
             target_user_id = (data.get("target_user_id") or self.user_id)
             raw_amount = data.get("amount")
-            if raw_amount is None or not getattr(self, "table", None):
-                print("[WARN] add_balance: missing amount or no table bound")
+
+            # 🔧 Use the shared table from room state (not self.table)
+            table = self.state.get("table")
+            if raw_amount is None or table is None:
+                print("[WARN] add_balance: missing amount or no table bound (state.table is None)")
                 return
 
             # Normalize amount
@@ -168,18 +172,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 print(f"[WARN] add_balance non-positive amount={amount} from {getattr(self, 'user_id', '')[:5]}")
                 return
 
-            # Lookup player (exact → base-id fallback)
+            # Lookup player on the shared table (exact → base-id fallback)
             pid = str(target_user_id)
-            player = self.table.get_player(pid)
+            player = table.get_player(pid)
             if not player and "-" in pid:
                 base = pid.split("-", 1)[0]
-                player = self.table.get_player(base)
+                player = table.get_player(base)
                 if player:
                     print(f"[INFO] add_balance: resolved {pid!r} → base {base!r}")
 
             if not player:
                 print(f"[WARN] add_balance: unknown player {pid!r}")
-                # Optional: tell the sender
                 try:
                     await self.send_to_user(self.user_id, f"❌ Can't find player for id {pid!r}")
                 except Exception:
@@ -187,7 +190,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 return
 
             try:
-                await player.add_balance(amount)
+                await player.add_balance(amount)  # this will trigger player_info_update_all()
                 await self.broadcast_system(f"💵 {player.name} added ${amount:.2f}")
             except Exception as e:
                 print(f"[ERROR] add_balance failed for {pid!r}: {e}")
