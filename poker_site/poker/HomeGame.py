@@ -96,6 +96,9 @@ import copy
 #UPDATE 13H - Done
 # fix add balance glitch where when one player adds balance another cannot afterward. Everything seems to be working.
 
+#UPDATE 13J - Testing
+# fix desktop all-in button and mobile layout
+
 #UPDATE 14 
 # For each time you send or maybe receive add to a game ledger, feed the entire ledger joined with separators to an open ai api and spit back a summary of the game play
 
