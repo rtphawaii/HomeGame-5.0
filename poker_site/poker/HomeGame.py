@@ -79,7 +79,11 @@ import copy
 #  # fix mobile add balance feature 
 
 #UPDATE 13E - Done
+# add message for when player raises
 # remove redundant system messages, removed pot update messages, removed 'now dealing' (flop, turn, river) 
+
+#UPDATE 13F 
+# Test all-in feature
 
 #UPDATE 14 
 # For each time you send or maybe receive add to a game ledger, feed the entire ledger joined with separators to an open ai api and spit back a summary of the game play
@@ -473,6 +477,7 @@ class Table():
                     await self.player_info_update_all()
                     await self.pot_info_update()
                     await self.bet_info_update()
+                    await self.output(f'{player} raises to {self.round_to}')
 
                     # Restart from seat after raiser
                     for index, p2 in enumerate(self.order):
