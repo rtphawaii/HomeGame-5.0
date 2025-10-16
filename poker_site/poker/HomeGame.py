@@ -93,6 +93,9 @@ import copy
 #UPDATE 13G - Done
 # fix raise loop where raiser gets action again
 
+#UPDATE 13H - Testing
+# fix add balance glitch where when one player adds balance another cannot afterward
+
 #UPDATE 14 
 # For each time you send or maybe receive add to a game ledger, feed the entire ledger joined with separators to an open ai api and spit back a summary of the game play
 

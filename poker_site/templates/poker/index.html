@@ -401,7 +401,11 @@
         return;
         }
         if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
-        window.chatSocket.send(JSON.stringify({ type: "add_balance", amount }));
+        window.chatSocket.send(JSON.stringify({
+            type: "add_balance",
+            target_user_id: userId,  // 👈 Explicit target ID
+            amount
+            }));
         console.log('[ADD] sent', amount);
         } else {
         console.warn('[ADD] socket not open');

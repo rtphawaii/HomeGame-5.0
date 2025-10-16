@@ -151,17 +151,35 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 return
 
         if msg_type == "add_balance":
-            target_user_id = data.get("target_user_id") or self.user_id
-            amount = data.get("amount")
-            if amount is None or not getattr(self, "table", None):
+            target_user_id = (data.get("target_user_id") or self.user_id)  # explicit > fallback
+            raw_amount = data.get("amount")
+            if raw_amount is None or not getattr(self, "table", None):
                 return
+
+            # Normalize amount
             try:
-                player = self.table.get_player(target_user_id)
-                if player:
-                    await player.add_balance(amount)
+                amount = float(raw_amount)
+            except Exception:
+                print(f"[WARN] add_balance bad amount={raw_amount!r} from {self.user_id[:5]}")
+                return
+
+            if amount <= 0:
+                print(f"[WARN] add_balance non-positive amount={amount} from {self.user_id[:5]}")
+                return
+
+            try:
+                player = self.table.get_player(str(target_user_id))
+                if not player:
+                    print(f"[WARN] add_balance: unknown player {target_user_id!r}")
+                    return
+
+                await player.add_balance(amount)
+                await self.broadcast_system(f"💵 {player.name} added ${amount:.2f}")
+
             except Exception as e:
-                print(f"[ERROR] add_balance failed: {e}")
+                print(f"[ERROR] add_balance failed for {target_user_id!r}: {e}")
             return
+
 
         # === Regular chat / numeric input ===
         msg = data.get("message")
