@@ -149,19 +149,39 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     fut.set_result("start new round")
                 return
 
-
         if msg_type == "add_balance":
             target_user_id = data.get("target_user_id") or self.user_id
             amount = data.get("amount")
-            if amount is None or not hasattr(self, "table") or not self.table:
+
+            # get the shared table from room state (works for ALL connections)
+            table = self.state.get("table")
+            if amount is None or table is None:
+                print("[ADD_BALANCE] ignored (amount or table missing)")
                 return
+
             try:
-                player = self.table.get_player(target_user_id)
-                if player:
-                    await player.add_balance(amount)
+                # amount can arrive as string -> coerce
+                try:
+                    amount_f = float(amount)
+                except (TypeError, ValueError):
+                    await self.send_to_user(self.user_id, "❌ Invalid amount.")
+                    return
+
+                player = table.get_player(target_user_id)
+                if not player:
+                    print(f"[ADD_BALANCE] no Player for user_id={target_user_id}")
+                    await self.send_to_user(self.user_id, "❌ Could not find your player in this room.")
+                    return
+
+                await player.add_balance(amount_f)
+                print(f"[ADD_BALANCE] +{amount_f} for {target_user_id}")
+
+                # optional tiny ack back to sender
+                await self.send_to_user(self.user_id, f"✅ Added ${amount_f:.2f}")
             except Exception as e:
                 print(f"[ERROR] add_balance failed: {e}")
             return
+
 
         msg = data.get("message")
         if msg is None:
