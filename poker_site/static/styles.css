@@ -298,15 +298,20 @@ h2 { color: var(--accent); margin-bottom: 15px; font-weight: 600; }
     gap: 8px;
   }
 
+  /* Compact chat input on mobile */
   #chat-message-input {
     width: 100%;
-    padding: 6px 8px;         /* ✅ smaller padding → shorter height */
-    font-size: 15px;          /* same readable size without zoom */
-    line-height: 1.2;
+    height: 36px;              /* ✅ fixed, short */
+    padding: 6px 10px;         /* small padding */
+    line-height: 1;            /* no extra vertical growth */
+    font-size: 16px;           /* avoids iOS zoom but stays compact */
     border-radius: 6px;
     box-sizing: border-box;
     margin-bottom: 8px;
+    -webkit-appearance: none;  /* iOS: remove native height quirks */
+    appearance: none;
   }
+  
   #send,
   #all-in-btn {
     width: 100%;
