@@ -82,13 +82,16 @@ import copy
 # add message for when player raises
 # remove redundant system messages, removed pot update messages, removed 'now dealing' (flop, turn, river) 
 
-#UPDATE 13F - Tested locally
+#UPDATE 13F - Done
 # all-in button
 # PROGRESS -> the game is broken and not letting the initial bidding take place. After dealing cards the game fails.
 # PROGRESS 2 -> seems to be working locally, try to deploy and test
 # PROGRESS 3 -> needs testing, partially works
 # PROGRESS 3 -> breaks when a short stacked player goes all-in and the bigger stack player subsequently goes all-in
 # BACKUP -> Google Drive HomeGame 5.3 
+
+#UPDATE 13G - Done
+# fix raise loop where raiser gets action again
 
 #UPDATE 14 
 # For each time you send or maybe receive add to a game ledger, feed the entire ledger joined with separators to an open ai api and spit back a summary of the game play
@@ -1504,10 +1507,23 @@ class Player():
 
     async def add_balance(self, amount):
         try:
-            self.balance = float(self.balance) + float(amount)
-        except (ValueError, TypeError):
+            inc = _money(amount)  # Decimal-safe
+        except (ValueError, TypeError, InvalidOperation):
             return
+
+        # add safely and keep UI float
+        self.balance = _to_float(_money(self.balance) + inc)
+
+        # if they were marked out, revive them for the NEXT hand
+        if self.out_of_balance and self.balance > 0:
+            self.out_of_balance = False
+
+        # notify clients
         await self.table.player_info_update_all()
+        await self.table.send_to_user(
+            self.player_id,
+            f"💵 Added {float(inc):.2f}. New balance: {float(self.balance):.2f}"
+        )
 
 import asyncio
 async def run_game(player_ids, consumer, smallblind=.10, bigblind=.10, room_name=None, cancel_event=None):
