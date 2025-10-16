@@ -135,22 +135,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await self.send_to_user(self.user_id, '❌ Invalid entry. Please enter an integer between 2 and 22.')
 
     async def receive(self, text_data):
-        print("[RECEIVE] got:", text_data)
         data = json.loads(text_data)
         msg_type = data.get("type")
-        print("[RECEIVE] type:", msg_type)
 
-        # --- Control messages (buttons etc.) ---
+        # --- Control messages ---
         if msg_type == "control":
             cmd = data.get("cmd")
-            print(f"[CONTROL] {cmd}")
-
             if cmd == "restart_game":
                 await self._restart_room(relaunch=True)
                 return
-
             if cmd == "start_new_round":
-                # satisfy pending group input for this room
                 fut = self.state.get("pending_inputs_all", {}).pop("awaiting all", None)
                 if fut and not fut.done():
                     fut.set_result("start new round")
@@ -159,59 +153,43 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if msg_type == "add_balance":
             target_user_id = data.get("target_user_id") or self.user_id
             amount = data.get("amount")
-
-            # get the shared table from room state (works for ALL connections)
-            table = self.state.get("table")
-            if amount is None or table is None:
-                print("[ADD_BALANCE] ignored (amount or table missing)")
+            if amount is None or not getattr(self, "table", None):
                 return
-
             try:
-                # amount can arrive as string -> coerce
-                try:
-                    amount_f = float(amount)
-                except (TypeError, ValueError):
-                    await self.send_to_user(self.user_id, "❌ Invalid amount.")
-                    return
-
-                player = table.get_player(target_user_id)
-                if not player:
-                    print(f"[ADD_BALANCE] no Player for user_id={target_user_id}")
-                    await self.send_to_user(self.user_id, "❌ Could not find your player in this room.")
-                    return
-
-                await player.add_balance(amount_f)
-                print(f"[ADD_BALANCE] +{amount_f} for {target_user_id}")
-
-                # optional tiny ack back to sender
-                await self.send_to_user(self.user_id, f"✅ Added ${amount_f:.2f}")
+                player = self.table.get_player(target_user_id)
+                if player:
+                    await player.add_balance(amount)
             except Exception as e:
                 print(f"[ERROR] add_balance failed: {e}")
             return
 
-
+        # === Regular chat / numeric input ===
         msg = data.get("message")
         if msg is None:
             return
+        
+        print(f"[receive] from {self.user_id[:5]} msg={msg!r} "
+      f"pending_keys={list(self.state['pending_inputs'].keys())} "
+      f"group_waiting={'awaiting all' in self.state.get('pending_inputs_all', {})}")
 
-        # Resolve group future first
-        if "awaiting all" in self.state["pending_inputs_all"]:
-            fut = self.state["pending_inputs_all"].pop("awaiting all")
-            if not fut.done():
-                fut.set_result(msg)
-            return
-
-        # Resolve per-user future
+        # 1) Resolve per-user future FIRST (betting input)
         fut = self.state["pending_inputs"].pop(self.user_id, None)
         if fut and not fut.done():
             fut.set_result(msg)
             return
 
-        # Otherwise broadcast
+        # 2) Then resolve any group future (“start new round”)
+        fut_all = self.state.get("pending_inputs_all", {}).pop("awaiting all", None)
+        if fut_all and not fut_all.done():
+            fut_all.set_result(msg)
+            return
+
+        # 3) Otherwise broadcast
         await self.channel_layer.group_send(
-            self.group_name,  # ⬅️ instead of "chat"
+            self.group_name,
             {"type": "chat_message", "message": f"{self.user_id[:5]}: {msg}"},
         )
+
 
     # async def send_to_user(self, user_id, message):
     #     player = self.state["players"].get(user_id)
@@ -222,11 +200,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
     # MANAGE ALL-IN
     async def send_to_user(self, user_id, message):
         player = self.state["players"].get(user_id)
-        if player:
-            if isinstance(message, dict):
-                await player.send(text_data=json.dumps(message))  # ← keep as JSON
-            else:
-                await player.send(text_data=json.dumps({'message': message}))
+        if not player:
+            return
+        if isinstance(message, dict):
+            # send raw JSON (control signals like your_turn/turn_end)
+            await player.send(text_data=json.dumps(message))
+        else:
+            # send chat-style text
+            await player.send(text_data=json.dumps({'message': message}))
+
 
 
     async def send_player_info(self, user_id, message):
@@ -240,7 +222,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
 
     async def get_input(self, user_id, prompt, cancel_event=None):
-        print('ENTER GET INPUT')
+        print(f"[get_input] -> set pending for {user_id!r}")
         await self.send_to_user(user_id, prompt)
         fut = asyncio.Future()
         self.state["pending_inputs"][user_id] = fut
