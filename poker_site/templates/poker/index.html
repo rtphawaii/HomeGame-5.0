@@ -391,30 +391,44 @@
     }
 
     // === Add Balance (single, correct listener) ===
+    function parseAmount(v) {
+        if (typeof v !== "string") v = String(v ?? "");
+        const m = v.trim().match(/^[$+]?(\d+(?:\.\d{1,2})?)$/);
+        return m ? parseFloat(m[1]) : NaN;
+    }
+
     const addBtn = document.getElementById("add-btn");
     if (addBtn) {
-    const addHandler = () => {
-        const field = document.getElementById("amount-input");
-        const amount = parseFloat(field.value);
-        if (isNaN(amount) || amount <= 0) {
-        alert("Enter a valid positive number!");
-        return;
-        }
-        if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
-            window.chatSocket.send(JSON.stringify({
-            type: "add_balance",
-            target_user_id: userId,
-            amount
-            }));
-        console.log('[ADD] sent', amount);
-        } else {
-        console.warn('[ADD] socket not open');
-        }
-        field.value = "";
-    };
+        const addHandler = (e) => {
+        if (e && e.type === "touchend") e.preventDefault();
 
-    addBtn.addEventListener("click", addHandler);
-    addBtn.addEventListener("touchend", (e) => { e.preventDefault(); addHandler(); });
+        const field = document.getElementById("amount-input");
+        const raw = field ? field.value : "";
+        const amount = parseAmount(raw);
+
+        if (isNaN(amount) || amount <= 0) {
+            alert("Enter a valid positive number (e.g., 10 or 10.00).");
+            return;
+        }
+
+        if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
+            window.chatSocket.send(
+            JSON.stringify({
+                type: "add_balance",
+                target_user_id: userId, // <- explicit target for this tab/player
+                amount: amount
+            })
+            );
+            console.log("[ADD] sent", amount, "for", userId);
+        } else {
+            console.warn("[ADD] socket not open");
+        }
+
+        if (field) field.value = "";
+        };
+
+        addBtn.addEventListener("click", addHandler, { passive: true });
+        addBtn.addEventListener("touchend", addHandler, { passive: false });
     }
 
 

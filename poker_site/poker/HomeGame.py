@@ -279,6 +279,7 @@ class Table():
         #update hand score
         await self.update_handscore()
 
+    #get player
     def get_player(self, player_id: str):
         """Find a player by exact id; if not found, try base part before '-'."""
         if player_id is None:
@@ -290,30 +291,32 @@ class Table():
         if p:
             return p
 
-        # Fallback scan exact
+        # Fallback scan (exact)
         for pool in (self.perma_list, self.list):
             for p in pool:
                 if str(p.player_id) == pid:
                     self.players_by_id[pid] = p
                     return p
 
-        # Base-id fallback (handles ids like 'user-XYZ-rnd')
+        # Base-id fallback to handle client ids like "user123-<rnd>"
         if "-" in pid:
             base = pid.split("-", 1)[0]
-            # try indexed
+
             p = self.players_by_id.get(base)
             if p:
+                # index both for future hits
+                self.players_by_id[pid] = p
                 return p
-            # scan
+
             for pool in (self.perma_list, self.list):
                 for p in pool:
                     if str(p.player_id) == base:
-                        # index both keys for future speed
                         self.players_by_id[base] = p
                         self.players_by_id[pid] = p
                         return p
 
         return None
+
 
     
     def positions(self):
@@ -1433,6 +1436,7 @@ class Player():
         self.hand_forscore=None
         self.table=table
         self.name=f'player #{self.player_id[:5]}'
+        self._bal_lock = asyncio.Lock()
 
     def __repr__(self):
         return (f'{self.name}')
@@ -1529,23 +1533,23 @@ class Player():
 
     async def add_balance(self, amount):
         try:
-            inc = _money(amount)  # Decimal-safe
-        except (ValueError, TypeError):
+            inc = _money(amount)
+            if inc <= 0:
+                return
+        except Exception:
             return
 
-        # add safely and keep UI float
-        self.balance = _to_float(_money(self.balance) + inc)
+        # Lazy-init lock in case of older objects
+        if not hasattr(self, "_bal_lock"):
+            import asyncio
+            self._bal_lock = asyncio.Lock()
 
-        # if they were marked out, revive them for the NEXT hand
-        if self.out_of_balance and self.balance > 0:
-            self.out_of_balance = False
+        async with self._bal_lock:
+            self.balance = _to_float(_money(self.balance) + inc)
+            if getattr(self, "out_of_balance", False) and self.balance > 0:
+                self.out_of_balance = False
 
-        # notify clients
         await self.table.player_info_update_all()
-        await self.table.send_to_user(
-            self.player_id,
-            f"💵 Added {float(inc):.2f}. New balance: {float(self.balance):.2f}"
-        )
 
 import asyncio
 async def run_game(player_ids, consumer, smallblind=.10, bigblind=.10, room_name=None, cancel_event=None):
