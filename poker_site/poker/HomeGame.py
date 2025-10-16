@@ -475,6 +475,8 @@ class Table():
 
             continue_loop = False
 
+            restart = False  # 🔹 will break the for-loop when a raise occurs
+
             # iterate seats once; may restart if someone raises
             for player in self._iter_seats(found_index, end_index):
                 # hand ended by folds
@@ -573,6 +575,7 @@ class Table():
                             end_index = raiser_idx
 
                         continue_loop = True
+                        restart = True
                         break
 
                     # Not a raise:
@@ -601,7 +604,10 @@ class Table():
                         await self.output(f'{player} is all-in short for {bet_to:.2f} (cannot cover full call)')
                         await self.send_to_user(player.player_id, {"action": "turn_end"})
                         break
-
+                    
+                    if restart:
+                        break
+                    
                     # fallback (shouldn’t hit)
                     await self.output(f'{player} action registered')
                     await self.send_to_user(player.player_id, {"action": "turn_end"})
