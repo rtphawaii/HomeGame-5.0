@@ -86,6 +86,8 @@ import copy
 # all-in button
 # PROGRESS -> the game is broken and not letting the initial bidding take place. After dealing cards the game fails.
 # PROGRESS 2 -> seems to be working locally, try to deploy and test
+# PROGRESS 3 -> needs testing, partially works
+# PROGRESS 3 -> breaks when a short stacked player goes all-in and the bigger stack player subsequently goes all-in
 # BACKUP -> Google Drive HomeGame 5.3 
 
 #UPDATE 14 
@@ -782,15 +784,17 @@ class Table():
 
             if len(winners_sorted) == 1:
                 # Single winner: take entire pot
-                w = winners_sorted[0]
-                w.balance += float(pot_amount)
-                await self.output(f"{w.name} wins {pot_amount:.2f}")
-                continue
+                winner = self.order[0]
+                self._add_to_balance(winner, self.pot)
+                await self.output(f"everyone else folded... {winner.name} wins {self.pot}")
+                self.pot = 0
+                await self.player_info_update_all()
+                return
 
             # Tie: split into exact cents
             shares = split_even(pot_amount, len(winners_sorted))
             for share, p in zip(shares, winners_sorted):
-                p.balance += share
+                self._add_to_balance(p, share)
 
             names = " & ".join(p.name for p in winners_sorted)
             if len(set(shares)) == 1:
