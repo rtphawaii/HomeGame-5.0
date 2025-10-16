@@ -335,3 +335,34 @@ h2 { color: var(--accent); margin-bottom: 15px; font-weight: 600; }
   input, button { font-size: 16px !important; }
   body { -webkit-text-size-adjust: 100%; }
 }
+
+/* =========================
+   All-In Button (fixed color + turn highlight)
+   ========================= */
+#all-in-btn {
+  background-color: #ff5252 !important; /* bright red default */
+  color: #fff !important;
+  border: none;
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+#all-in-btn:hover:not(:disabled) {
+  background-color: #ff3030 !important;
+  transform: scale(1.05);
+}
+
+#all-in-btn:disabled {
+  background-color: #999 !important;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Highlight for current-turn player */
+#all-in-btn.your-turn {
+  background-color: #ff0000 !important; /* intense red highlight */
+  box-shadow: 0 0 12px rgba(255, 0, 0, 0.5);
+}
