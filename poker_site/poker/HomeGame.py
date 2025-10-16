@@ -96,10 +96,17 @@ import copy
 #UPDATE 13H - Done
 # fix add balance glitch where when one player adds balance another cannot afterward. Everything seems to be working.
 
-#UPDATE 13J - Testing
+#UPDATE 13J - Done
 # fix desktop all-in button and mobile layout
 
-#UPDATE 14 
+#UPDATE 14 - Done
+# all-in big stack over short stack broken again
+
+#UPDATE 15 - Testing in Prod
+# big stack goes all-in and short stack can continue betting portions of stack instead of going all-in
+# PROGRESS: The big stack does have a cap when they go all-in now but other things broke. now when the big stack goes all-in and short stack is forced to go all-in no matter what they send, they cant fold either. Even if the short stack bets 5 it goes to an all-in. instead it should be an error message or something and require them to either enter the amount of their whole stack or use the all-in button. When someone goes all-in and it is two players, it automatically makes the other person go all-in as well.
+
+#UPDATE XX
 # For each time you send or maybe receive add to a game ledger, feed the entire ledger joined with separators to an open ai api and spit back a summary of the game play
 
 from decimal import Decimal, ROUND_HALF_UP, getcontext
@@ -188,6 +195,7 @@ class Table():
     def _money(x):
         return Decimal(str(x)).quantize(Table.CENT, rounding=ROUND_HALF_UP)
 
+    #apply delta allinmech
     def _apply_delta(self, player, delta_dec: Decimal) -> Decimal:
         """Apply a chip delta in Decimal to all ledgers + UI list."""
         delta_dec = _money(delta_dec)
@@ -197,12 +205,74 @@ class Table():
         # Decimal ledgers
         self.contributed[player] += delta_dec
         self.pot += delta_dec
-        player.balance = _to_float(_money(player.balance) - delta_dec)  # keep balance as float for UI
+
+        # Update balance (UI uses float)
+        new_bal = _money(player.balance) - delta_dec
+        if new_bal <= Decimal("0.00"):
+            new_bal = Decimal("0.00")
+            if player not in self.all_in:
+                self.all_in.append(player)
+                # optional: announce here if you prefer
+                # await self.output(f"{player.name} is ALL-IN")
+        player.balance = _to_float(new_bal)
 
         # UI history expects floats (your bet_info_update reads self.bet[-1][-1])
         self.bet.append((player, _to_float(delta_dec)))
         return delta_dec
+
     
+    #helper functions - allinmech
+    def live_opponents(self, actor):
+        """Opponents still in the hand (not folded)."""
+        return [
+            q for q in self.order
+            if q is not actor and not getattr(q, "folded", False)
+        ]
+
+    def opponents_with_chips(self, actor):
+        """Opponents who can still put chips in (balance > 0)."""
+        return [q for q in self.live_opponents(actor) if _money(q.balance) > EPS]
+
+    def max_effective_total_commit(self, actor):
+        """
+        Maximum *total to* amount this actor can legally commit
+        without creating an uncallable raise.
+        """
+        actor_to_cap = _money(actor.currentbet) + _money(actor.balance)
+        opps = self.opponents_with_chips(actor)
+        if not opps:
+            # Nobody left with chips → actor can only match/check in the main loop
+            return actor_to_cap
+        opp_caps = [_money(o.currentbet) + _money(o.balance) for o in opps]
+        # You can't exceed what the largest remaining opponent could ever call.
+        return min(max(opp_caps), actor_to_cap)
+
+    def betting_round_done(self):
+        """
+        True if all non-folded players are either:
+        - matched to current price, or
+        - all-in (or out of chips)
+        """
+        target = _money(self.round_to)
+        for p in self.order:
+            if getattr(p, "folded", False):
+                continue
+            # All-in players don't need to match
+            if p in self.all_in or _money(p.balance) <= EPS:
+                continue
+            if _money(p.currentbet) != target:
+                return False
+        return True
+    
+    def _is_fold(raw) -> bool:
+        try:
+            s = str(raw).strip()
+            if s == "-1":
+                return True
+            # also accept numeric -1 / -1.0
+            return float(raw) <= -1.0 + 1e-9
+        except Exception:
+            return False
 
     async def flop(self):
         '''deals flop'''
@@ -341,137 +411,27 @@ class Table():
             bb_idx = (dealer_idx + 2) % n
         return dealer_idx, sb_idx, bb_idx
 
-
-    # async def bets(self,preflop=False):
-    #     '''betting mechanism'''
-    #     print('betting started')
-    #     #start collecting the first round of bets starting from next to the big blind
-    #     raise_offset=1
-
-    #     #reset currentbet
-    #     for player in self.perma_list:
-    #         player.currentbet=0
-        
-    #     #reset bet box if it is new betting round post flop
-    #     if preflop==False:
-    #         await self.bet_info_update(new_bets=True)
-    #     else:
-    #         await self.bet_info_update(blinds_start=True)
-
-
-    #     #find the big blind index in self.order
-    #     if self.preflop==True:
-            
-    #         #find the player that is big blind
-    #         player_to_find = self.bet[-1][0]
-    #         found_index = None
-    #         for index, player in enumerate(self.order):
-    #             if player == player_to_find:
-    #                 found_index = index
-    #                 #the action starts one player after the big blind if there has not been a straddle
-    #                 found_index+=1
-    #                 #set an endpoint, the betting should end before reaching the end index based on the loop parameters
-    #                 end_index=found_index
-    #                 break
-    #     else:
-    #         #when it is post flop,river, turn, action starts after the dealer and ends on the dealer
-    #         #self.bet=[(self.list[-1],0)]
-    #         found_index=1
-    #         end_index=1
-    #     #once the index of the big blind player is found, loop around starting from the person next to them
-    #     if found_index is not None:
-    #         print('found_index is defined')
-    #         #everything should be in a while loop that resets betting if someone raises
-    #         continue_loop = True
-    #         while continue_loop:
-    #                 #continue through the betting process as normal unless someone raises
-    #                 continue_loop=False
-    #                 print('enter first while loop')
-    #                 #betting loop starts
-    #                 print(self.order[found_index:])
-    #                 print(self.order[:end_index])
-    #                 for offset,player in enumerate(self.order[found_index:] + self.order[:end_index]):
-    #                     print('player betting: ', player)
-    #                     #betting ends if everyone has folded except for one player 
-    #                     if len(self.order)<=1:
-    #                         continue_loop=False
-    #                         return
-
-    #                     # if the player is all-in, skip betting for that player 
-    #                     if player in self.all_in:
-    #                         await self.output(f'{player} is all-in and has no action')
-    #                         continue
-
-    #                     #a player needs to place a valid bet that is a fold, call, check, or raise
-    #                     while True:
-    #                         print('second while loop for individual betting enter')
-    #                         playerbet = await player.placebet(self.bet[-1][1])  # Wait for the player to place a bet
-    #                         print('placebet called', player)
-
-    #                         if playerbet == -1 or playerbet == self.bet[-1][1] or playerbet > self.bet[-1][1]:
-    #                             print('valid bet - loop break and evaluate')
-    #                             await self.output(f'{player} bets {playerbet}')
-    #                             break  # Valid bet, exit the loop
-    #                         else:
-    #                             print("Invalid bet. Please enter another bet.")
-    #                             await self.send_to_user(player.player_id, '❌ Invalid bet. Please enter another bet.')
-
-
-    #                     #remove the player from the order if they fold
-    #                     if playerbet==-1:
-    #                         index = self.order.index(player)
-    #                         self.order.pop(index)
-    #                         print('fold by', player)
-    #                         await self.output(f"{player} has folded")
-    #                     #player raises, evaluate bets for everyone again starting from the next player around to the player that raises
-    #                     elif playerbet>self.bet[-1][1]:
-    #                         #add the bet to the betting log
-    #                         self.bet.append((player,playerbet))
-
-    #                         #update the current bet display
-    #                         await self.bet_info_update()
-
-    #                         #update current bet
-    #                         player.currentbet=playerbet
-    #                         await self.player_info_update_all()
-
-    #                         #the player object that raised and needs to be found
-    #                         player_to_find = self.bet[-1][0]
-    #                         #find the index of the player that raised
-    #                         for index, player in enumerate(self.order):
-    #                             if player == player_to_find:
-    #                                 found_index = index
-    #                                 found_index+=1
-    #                         #end the betting action on the person before the person that is raising 
-    #                         end_index=found_index-1
-    #                         print('raise')
-    #                         raise_offset=0
-    #                         continue_loop=True
-
-    #                         break  # Break out of the loop to restart (enter the start of the first while loop)
-    #                     else:
-    #                         #if the bet is a call then it is simply added and we move to the next better
-    #                         self.bet.append((player,playerbet))
-    #                         print(f'{player} calls the bet of {playerbet}')
-
-    #                         #update current bet
-    #                         player.currentbet=playerbet
-    #                         await self.player_info_update_all()
-
-
-    #                         await self.output(f'{player} calls the bet of {playerbet}')
-
+    #bets
     async def bets(self, preflop: bool = False):
-        """Betting mechanism (Decimal-safe, short-all-in aware)."""
         print('betting started')
 
         if self.cancel_event and self.cancel_event.is_set():
             raise asyncio.CancelledError
 
+        # --- tiny helpers (local so it's 100% drop-in) ---
+        def _is_fold(raw) -> bool:
+            try:
+                s = str(raw).strip()
+                if s == "-1":
+                    return True
+                return float(raw) <= -1.0 + 1e-9
+            except Exception:
+                return False
+
         # Reset per-street meters
         for p in self.perma_list:
-            if not preflop or (p is not getattr(self, "small_blind_player", None) and
-                            p is not getattr(self, "big_blind_player", None)):
+            if not preflop or (p is not getattr(self, "small_blind_player", None)
+                            and p is not getattr(self, "big_blind_player", None)):
                 p.currentbet = 0.0
 
         # Street target (float for UI, Decimal for math)
@@ -505,10 +465,9 @@ class Table():
                 raise asyncio.CancelledError
 
             continue_loop = False
-
-            restart = False  # 🔹 will break the for-loop when a raise occurs
+            restart = False
             seats = list(self._iter_seats(found_index, end_index))
-            # iterate seats once; may restart if someone raises
+
             for player in seats:
                 # hand ended by folds
                 if len(self.order) <= 1:
@@ -519,50 +478,77 @@ class Table():
                     await self.output(f'{player} is all-in and has no action')
                     continue
 
-                # --- solicit a valid action ---
+                # ---------- NORMAL INPUT LOOP PER PLAYER ----------
                 while True:
                     if self.cancel_event and self.cancel_event.is_set():
                         raise asyncio.CancelledError
 
-                    # current street target (Decimal for comparisons)
-                    target_dec = _money(self.round_to)
+                    target_dec     = _money(self.round_to)            # price to call (street target)
+                    current_to_dec = _money(player.currentbet)        # player's current total on this street
+                    balance_dec    = _money(player.balance)
+                    allowed_to     = current_to_dec + balance_dec     # max this player can reach (to-price)
+                    to_call_dec    = target_dec - current_to_dec
 
                     # let UI know it's their turn
                     await self.send_to_user(player.player_id, {"action": "your_turn", "target": float(target_dec)})
 
                     raw = await player.placebet(float(target_dec), cancel_event=self.cancel_event)
-                    print(f"[bets] recv raw={raw!r} from {player.name} target={target_dec} "f"curbet={player.currentbet} bal={player.balance}")
+                    print(f"[bets] recv raw={raw!r} from {player.name} target={target_dec} "
+                        f"curbet={player.currentbet} bal={player.balance}")
 
-                    # normalize to Decimal and allow "-1" fold
-                    try:
-                        playerbet_dec = _money(raw)
-                    except Exception:
-                        if str(raw).strip() == "-1":
-                            playerbet_dec = Decimal("-1")
-                        else:
-                            await self.send_to_user(player.player_id, '❌ Invalid bet. Please enter another bet.')
-                            continue
-
-                    # FOLD
-                    if playerbet_dec == Decimal("-1"):
+                    # --- FOLD (first) ---
+                    if _is_fold(raw):
                         self.order.remove(player)
                         await self.send_to_user(player.player_id, {"action": "turn_end"})
                         await self.output(f"{player} has folded")
                         if len(self.order) == 1:
                             self.gameover = True
                             return "hand_over"
-                        break  # out of inner while; go to next player
+                        break  # next player
 
-                    # legal cap “to” this street = currentbet + balance
+                    # --- parse numeric if not fold; keep original errors clean ---
+                    try:
+                        playerbet_dec = _money(raw)
+                    except Exception:
+                        # allow 'all-in' keywords via placebet() (it returns a to-price number already)
+                        if isinstance(raw, str) and raw.strip().lower() in ("all-in", "all in", "allin"):
+                            # treat as all-in TO-PRICE
+                            playerbet_dec = allowed_to
+                        else:
+                            await self.send_to_user(player.player_id, '❌ Invalid bet. Please enter another bet.')
+                            continue
+
+                    # recompute caps after parsing
                     current_to_dec = _money(player.currentbet)
                     balance_dec    = _money(player.balance)
                     allowed_to     = current_to_dec + balance_dec
+                    to_call_dec    = target_dec - current_to_dec
 
-                    # clamp the requested TO amount
+                    # ---------- SHORT-STACK GATE ----------
+                    # If player cannot cover the call, they must fold or go EXACT all-in (no partials).
+                    if to_call_dec > EPS and allowed_to + EPS < target_dec:
+                        # Only exact all-in-to-price accepted (or fold handled above)
+                        # If they typed something other than EXACT allowed_to, reject & reprompt.
+                        if abs(playerbet_dec - allowed_to) > EPS:
+                            await self.send_to_user(
+                                player.player_id,
+                                "❌ You’re covered: enter **-1** to fold, or **all-in** (your full stack amount)."
+                            )
+                            continue
+
+                    # Clamp intent to legal "to" amount (never exceed own stack)
                     bet_to = playerbet_dec if playerbet_dec <= allowed_to else allowed_to
+                    delta  = bet_to - current_to_dec
 
-                    # how many new chips now (delta)?
-                    delta = bet_to - current_to_dec
+                    # --- enforce minimum call for covered players ---
+                    # If player CAN cover the call, they may not bet below the target (no “partial calls”).
+                    if to_call_dec > EPS and allowed_to + EPS >= target_dec:
+                        if bet_to + EPS < target_dec:
+                            await self.send_to_user(
+                                player.player_id,
+                                f"❌ You must at least call {float(target_dec):.2f} or fold (-1)."
+                            )
+                            continue
 
                     # nothing added and not an exact check -> invalid
                     if delta <= Decimal("0.00") and bet_to != target_dec:
@@ -580,31 +566,26 @@ class Table():
                         # check / already-in (no chips added)
                         player.currentbet = _to_float(bet_to)
 
-                    # flag all-in if they hit their cap
-                    if abs(bet_to - allowed_to) <= EPS and player not in self.all_in:
+                    # mark all-in if they hit their cap
+                    if abs(bet_to - (current_to_dec + balance_dec)) <= EPS and player not in self.all_in:
                         self.all_in.append(player)
                         await self.output(f"{player.name} is ALL-IN for {bet_to:.2f}")
 
-                    # ---- decide outcome: raise / call / short-call / check / already-in ----
+                    # ---- decide outcome: raise / call / check / short-all-in display ----
                     round_to_dec = _money(self.round_to)
 
-                    # Genuine raise only if they exceed current street target
+                    # RAISE (includes first-action all-in > target)
                     if bet_to > round_to_dec + EPS:
                         self.round_to = float(bet_to)
                         await self.output(f'{player} raises to {self.round_to}')
                         await self.send_to_user(player.player_id, {"action": "turn_end"})
 
-                        # restart from seat after raiser
-                        raiser_idx = next(i for i, p2 in enumerate(self.order) if p2 is player)
+                        # Move action to the next seat; action closes on the raiser
+                        raiser_idx  = next(i for i, p2 in enumerate(self.order) if p2 is player)
                         found_index = (raiser_idx + 1) % len(self.order)
+                        end_index   = raiser_idx
 
-                        # heads-up: end on the raiser so they do NOT act again
-                        if len(self.order) == 2:
-                            end_index = raiser_idx
-                        else:
-                            # multiway: typical behavior—action closes when it comes back to the raiser
-                            end_index = raiser_idx
-
+                        # Restart outer loop to process next player naturally
                         continue_loop = True
                         restart = True
                         break
@@ -616,11 +597,9 @@ class Table():
                         await self.send_to_user(player.player_id, {"action": "turn_end"})
                         break
 
-                    # Positive price:
+                    # Positive price: exactly matched the call
                     if abs(_money(player.currentbet) - round_to_dec) <= EPS:
-                        # exactly matched the price
                         if delta <= EPS:
-                            # added nothing now
                             if balance_dec > EPS:
                                 await self.output(f'{player} is already in for {self.round_to}')
                             else:
@@ -630,24 +609,26 @@ class Table():
                         await self.send_to_user(player.player_id, {"action": "turn_end"})
                         break
 
-                    # short all-in (can’t cover full call)
+                    # short all-in message (cannot cover full call) — reach here only if we allowed exact all-in
                     if bet_to + EPS < round_to_dec:
                         await self.output(f'{player} is all-in short for {bet_to:.2f} (cannot cover full call)')
                         await self.send_to_user(player.player_id, {"action": "turn_end"})
                         break
-                    
 
-
-                    # fallback (shouldn’t hit)
+                    # fallback
                     await self.output(f'{player} action registered')
                     await self.send_to_user(player.player_id, {"action": "turn_end"})
                     break  # end inner while; move to next player
+
                 if restart:
-                    break
+                    break  # out of for seats; outer while restarts
+
+            # If nobody raised, keep iterating to next player (don’t end after first action)
             if not restart:
+                # We finished a full pass with no raise → street done
                 return "street_done"
-            if not restart:
-                return  
+
+
 
 
     # async def evaluate(self):
@@ -989,6 +970,9 @@ class Table():
     
     def _add_to_balance(self, player, amount_dec: Decimal):
         player.balance = _to_float(_money(player.balance) + _money(amount_dec))
+        self.all_in = [p for p in self.perma_list if _money(p.balance) <= EPS]
+        for p in self.perma_list:
+            p.currentbet = 0.0
 
     async def pot_info_update(self):
         await self.send_info_all({
