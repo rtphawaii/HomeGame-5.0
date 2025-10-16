@@ -476,9 +476,9 @@ class Table():
             continue_loop = False
 
             restart = False  # 🔹 will break the for-loop when a raise occurs
-
+            seats = list(self._iter_seats(found_index, end_index))
             # iterate seats once; may restart if someone raises
-            for player in self._iter_seats(found_index, end_index):
+            for player in seats:
                 # hand ended by folds
                 if len(self.order) <= 1:
                     return
@@ -605,14 +605,17 @@ class Table():
                         await self.send_to_user(player.player_id, {"action": "turn_end"})
                         break
                     
-                    if restart:
-                        break
-                    
+
+
                     # fallback (shouldn’t hit)
                     await self.output(f'{player} action registered')
                     await self.send_to_user(player.player_id, {"action": "turn_end"})
                     break  # end inner while; move to next player
-
+                if restart:
+                    break
+                
+            if not restart:
+                return  
 
 
     # async def evaluate(self):
