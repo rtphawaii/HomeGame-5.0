@@ -280,22 +280,41 @@ class Table():
         await self.update_handscore()
 
     def get_player(self, player_id: str):
+        """Find a player by exact id; if not found, try base part before '-'."""
+        if player_id is None:
+            return None
         pid = str(player_id)
-        # fast path via index
+
+        # Fast path via index
         p = self.players_by_id.get(pid)
         if p:
             return p
-        # fallback scan (in case something wasn’t indexed yet)
-        for p in self.perma_list:
-            if str(p.player_id) == pid:
-                # backfill the index for next time
-                self.players_by_id[pid] = p
+
+        # Fallback scan exact
+        for pool in (self.perma_list, self.list):
+            for p in pool:
+                if str(p.player_id) == pid:
+                    self.players_by_id[pid] = p
+                    return p
+
+        # Base-id fallback (handles ids like 'user-XYZ-rnd')
+        if "-" in pid:
+            base = pid.split("-", 1)[0]
+            # try indexed
+            p = self.players_by_id.get(base)
+            if p:
                 return p
-        for p in self.list:
-            if str(p.player_id) == pid:
-                self.players_by_id[pid] = p
-                return p
+            # scan
+            for pool in (self.perma_list, self.list):
+                for p in pool:
+                    if str(p.player_id) == base:
+                        # index both keys for future speed
+                        self.players_by_id[base] = p
+                        self.players_by_id[pid] = p
+                        return p
+
         return None
+
     
     def positions(self):
         """
@@ -1511,7 +1530,7 @@ class Player():
     async def add_balance(self, amount):
         try:
             inc = _money(amount)  # Decimal-safe
-        except (ValueError, TypeError, InvalidOperation):
+        except (ValueError, TypeError):
             return
 
         # add safely and keep UI float

@@ -401,9 +401,9 @@
         return;
         }
         if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
-        window.chatSocket.send(JSON.stringify({
+            window.chatSocket.send(JSON.stringify({
             type: "add_balance",
-            target_user_id: userId,  // 👈 Explicit target ID
+            target_user_id: userId,
             amount
             }));
         console.log('[ADD] sent', amount);

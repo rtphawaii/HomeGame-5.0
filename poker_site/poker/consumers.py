@@ -151,34 +151,48 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 return
 
         if msg_type == "add_balance":
-            target_user_id = (data.get("target_user_id") or self.user_id)  # explicit > fallback
+            target_user_id = (data.get("target_user_id") or self.user_id)
             raw_amount = data.get("amount")
             if raw_amount is None or not getattr(self, "table", None):
+                print("[WARN] add_balance: missing amount or no table bound")
                 return
 
             # Normalize amount
             try:
                 amount = float(raw_amount)
             except Exception:
-                print(f"[WARN] add_balance bad amount={raw_amount!r} from {self.user_id[:5]}")
+                print(f"[WARN] add_balance bad amount={raw_amount!r} from {getattr(self, 'user_id', '')[:5]}")
                 return
 
             if amount <= 0:
-                print(f"[WARN] add_balance non-positive amount={amount} from {self.user_id[:5]}")
+                print(f"[WARN] add_balance non-positive amount={amount} from {getattr(self, 'user_id', '')[:5]}")
+                return
+
+            # Lookup player (exact → base-id fallback)
+            pid = str(target_user_id)
+            player = self.table.get_player(pid)
+            if not player and "-" in pid:
+                base = pid.split("-", 1)[0]
+                player = self.table.get_player(base)
+                if player:
+                    print(f"[INFO] add_balance: resolved {pid!r} → base {base!r}")
+
+            if not player:
+                print(f"[WARN] add_balance: unknown player {pid!r}")
+                # Optional: tell the sender
+                try:
+                    await self.send_to_user(self.user_id, f"❌ Can't find player for id {pid!r}")
+                except Exception:
+                    pass
                 return
 
             try:
-                player = self.table.get_player(str(target_user_id))
-                if not player:
-                    print(f"[WARN] add_balance: unknown player {target_user_id!r}")
-                    return
-
                 await player.add_balance(amount)
                 await self.broadcast_system(f"💵 {player.name} added ${amount:.2f}")
-
             except Exception as e:
-                print(f"[ERROR] add_balance failed for {target_user_id!r}: {e}")
+                print(f"[ERROR] add_balance failed for {pid!r}: {e}")
             return
+
 
 
         # === Regular chat / numeric input ===
