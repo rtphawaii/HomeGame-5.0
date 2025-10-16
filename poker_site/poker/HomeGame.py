@@ -162,6 +162,17 @@ class Table():
             x.hand.append(self.deck.pop())
             x.hand.append(self.deck.pop())
     
+    def _iter_seats(self, start_idx: int, end_idx: int):
+        """Yield seats from start_idx up to (but not including) end_idx, wrapping once."""
+        n = len(self.order)
+        i = start_idx % n
+        stop = end_idx % n
+        while True:
+            yield self.order[i]
+            if i == (stop - 1) % n:    # stop right before end_idx
+                break
+            i = (i + 1) % n
+    
     CENT = Decimal("0.01")
 
     @staticmethod
@@ -464,12 +475,8 @@ class Table():
 
             continue_loop = False
 
-            # ✅ Safety guard for heads-up loop boundaries
-            if len(self.order) == 2 and found_index == end_index:
-                end_index = (found_index + 1) % len(self.order)
-
             # iterate seats once; may restart if someone raises
-            for player in (self.order[found_index:] + self.order[:end_index]):
+            for player in self._iter_seats(found_index, end_index):
                 # hand ended by folds
                 if len(self.order) <= 1:
                     return
@@ -554,17 +561,16 @@ class Table():
                         await self.output(f'{player} raises to {self.round_to}')
                         await self.send_to_user(player.player_id, {"action": "turn_end"})
 
-                        # --- restart logic ---
-                        for index, p2 in enumerate(self.order):
-                            if p2 == player:
-                                found_index = (index + 1) % len(self.order)
-                                break
+                        # restart from seat after raiser
+                        raiser_idx = next(i for i, p2 in enumerate(self.order) if p2 is player)
+                        found_index = (raiser_idx + 1) % len(self.order)
 
-                        # In heads-up, action only returns to the *other* player once
+                        # heads-up: end on the raiser so they do NOT act again
                         if len(self.order) == 2:
-                            end_index = index  # stop on the raiser (so they don't act again)
+                            end_index = raiser_idx
                         else:
-                            end_index = found_index  # standard multiway loop
+                            # multiway: typical behavior—action closes when it comes back to the raiser
+                            end_index = raiser_idx
 
                         continue_loop = True
                         break
