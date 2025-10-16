@@ -128,9 +128,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await self.send_to_user(self.user_id, '❌ Invalid entry. Please enter an integer between 2 and 22.')
 
     async def receive(self, text_data):
+        print("[RECEIVE] got:", text_data)
         data = json.loads(text_data)
         msg_type = data.get("type")
-        
+        print("[RECEIVE] type:", msg_type)
 
         # --- Control messages (buttons etc.) ---
         if msg_type == "control":

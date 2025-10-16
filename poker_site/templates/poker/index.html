@@ -82,25 +82,7 @@
     //     location.host + '/ws/chat/' + encodeURIComponent(roomName) +
     //     '/?user_id=' + encodeURIComponent(userId)
     // );
-
     
-
-    // Restart button → WS control
-    document.getElementById("restart-btn")?.addEventListener("click", () => {
-    if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
-        window.chatSocket.send(JSON.stringify({ type: "control", cmd: "restart_game" }));
-    } else {
-        alert("Connection not open yet. Try again in a moment.");
-    }
-    });
-
-    // Optional: Start New Round button
-    document.getElementById("start-round-btn")?.addEventListener("click", () => {
-    if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
-        window.chatSocket.send(JSON.stringify({ type: "control", cmd: "start_new_round" }));
-    }
-    });
-
     function handleSocketMessage(data) {
     console.log("Received:", data);
 
@@ -186,6 +168,25 @@
     // Initialize as GLOBAL
     window.chatSocket = createSocket();
     
+
+    // Restart button → WS control
+    document.getElementById("restart-btn")?.addEventListener("click", () => {
+    if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
+        window.chatSocket.send(JSON.stringify({ type: "control", cmd: "restart_game" }));
+    } else {
+        alert("Connection not open yet. Try again in a moment.");
+    }
+    });
+
+
+    // Optional: Start New Round button
+    document.getElementById("start-round-btn")?.addEventListener("click", () => {
+    if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
+        window.chatSocket.send(JSON.stringify({ type: "control", cmd: "start_new_round" }));
+    }
+    });
+
+    
     // Optional keep-alive
     setInterval(() => {
     if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
@@ -196,13 +197,17 @@
 
     // Chat send
     document.getElementById('send').onclick = function () {
-        const field = document.getElementById('chat-message-input');
-        const message = field.value;
-        if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
-            window.chatSocket.send(JSON.stringify({ message }));
-        }
-        field.value = '';
-        };
+    const field = document.getElementById('chat-message-input');
+    const msg = field.value.trim();
+    if (!msg) return;
+    if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
+        window.chatSocket.send(JSON.stringify({ message: msg }));
+    } else {
+        console.warn('[CHAT] socket not open');
+    }
+    field.value = '';
+    };
+
 
     function updatePlayerStats(player) {
         const stats = document.getElementById('player-stats');
@@ -330,31 +335,28 @@
     }
 
     // === Add Balance (single, correct listener) ===
-    (() => {
-    const btn   = document.getElementById("add-btn");
-    const field = document.getElementById("amount-input");
-    if (!btn || !field) return;
-
-    btn.type = "button"; // don’t submit anything
-
-    const sendAdd = () => {
-        const amount = parseFloat((field.value || "").trim());
+    const addBtn = document.getElementById("add-btn");
+    if (addBtn) {
+    const addHandler = () => {
+        const field = document.getElementById("amount-input");
+        const amount = parseFloat(field.value);
         if (isNaN(amount) || amount <= 0) {
         alert("Enter a valid positive number!");
         return;
         }
         if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
-        console.log("[AddBalance] sending", amount);
         window.chatSocket.send(JSON.stringify({ type: "add_balance", amount }));
-        field.value = "";
+        console.log('[ADD] sent', amount);
         } else {
-        alert("Connection not open yet. Try again in a moment.");
+        console.warn('[ADD] socket not open');
         }
+        field.value = "";
     };
 
-    btn.addEventListener("click", sendAdd);
-    btn.addEventListener("touchend", (e) => { e.preventDefault(); sendAdd(); }, { passive: false });
-    })();
+    addBtn.addEventListener("click", addHandler);
+    addBtn.addEventListener("touchend", (e) => { e.preventDefault(); addHandler(); });
+    }
+
 
 
     // Allow pressing Enter to send message
