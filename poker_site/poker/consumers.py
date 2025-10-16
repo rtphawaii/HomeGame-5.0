@@ -61,7 +61,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.room_name = self.scope["url_route"]["kwargs"]["room_name"]
         self.group_name = f"chat_{self.room_name}"
-        self.user_id = self.scope['query_string'].decode('utf-8').split('=')[1].strip()
+
+        #MODIFIED ALL-IN
+        from urllib.parse import parse_qs
+        qs = parse_qs(self.scope.get("query_string", b"").decode("utf-8"))
+        self.user_id = (qs.get("user_id") or [""])[0]
+        print(f"✅ CONNECT user_id={self.user_id} room={self.room_name}")
 
         self.state = room_state(self.room_name)
 
@@ -71,6 +76,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
         print(f"✅ CONNECT {self.user_id} → room {self.room_name} (players={list(self.state['players'])})")
+        await self.send(text_data=json.dumps({"debug_user_id": self.user_id}))
+
 
         # Only first connector prompts for player_count
         if self.state["player_count"] is None and not self.state["pending_inputs"]:
@@ -206,10 +213,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
             {"type": "chat_message", "message": f"{self.user_id[:5]}: {msg}"},
         )
 
+    # async def send_to_user(self, user_id, message):
+    #     player = self.state["players"].get(user_id)
+    #     if player:
+    #         await player.send(text_data=json.dumps({'message': message}))
+    #         print('sent to player')
+
+    # MANAGE ALL-IN
     async def send_to_user(self, user_id, message):
         player = self.state["players"].get(user_id)
         if player:
-            await player.send(text_data=json.dumps({'message': message}))
+            if isinstance(message, dict):
+                await player.send(text_data=json.dumps(message))  # ← keep as JSON
+            else:
+                await player.send(text_data=json.dumps({'message': message}))
+
 
     async def send_player_info(self, user_id, message):
         player = self.state["players"].get(user_id)
@@ -222,6 +240,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
 
     async def get_input(self, user_id, prompt, cancel_event=None):
+        print('ENTER GET INPUT')
         await self.send_to_user(user_id, prompt)
         fut = asyncio.Future()
         self.state["pending_inputs"][user_id] = fut

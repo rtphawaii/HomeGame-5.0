@@ -225,6 +225,28 @@ h2 {
 }
 
 /* =========================
+   All-In Button
+   ========================= */
+#all-in-btn {
+  background-color: #ff5252;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  margin-left: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+#all-in-btn:disabled {
+  background-color: #999;
+  cursor: not-allowed;
+}
+#all-in-btn:hover:not(:disabled) {
+  background-color: #ff3030;
+}
+
+
+/* =========================
    Player Info
    ========================= */
 #player-info {

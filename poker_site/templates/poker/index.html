@@ -34,11 +34,18 @@
 
     <!-- chat box and player info -->
     <div class="container">
-        <div id="chat-section">
-            <div id="chat-log"></div>
-            <input id="chat-message-input" type="text" placeholder="Type your move..." />
-            <button id="send">Send</button>
+    <div id="chat-section">
+        <div id="chat-log"></div>
+
+        <!-- ONE set of controls -->
+        <div class="chat-controls">
+        <input id="chat-message-input" type="text" placeholder="Type your move..." />
+        <button id="send">Send</button>
+
+        <!-- MODIFIED FOR ALL-IN -->
+        <button id="all-in-btn" disabled>All-In</button>
         </div>
+    </div>
 
 
     <!-- right column stacks Hand (boxed) ABOVE Player Info -->
@@ -75,7 +82,7 @@
         ? crypto.getRandomValues(new Uint32Array(1))[0].toString(36)
         : Math.random().toString(36).slice(2));
     const userId = `${baseUserId}-${rnd}`;
-
+    console.log("Full userId this tab:", userId);
 
     // Old websocket connection
     // const chatSocket = new WebSocket(
@@ -83,58 +90,101 @@
     //     location.host + '/ws/chat/' + encodeURIComponent(roomName) +
     //     '/?user_id=' + encodeURIComponent(userId)
     // );
+
+    // Prompt player to act
+    // #MODIFIED FOR ALL-IN
+    function setMyTurn(isMyTurn) {
+        const allInBtn = document.getElementById("all-in-btn");
+        if (!allInBtn) return;
+        allInBtn.disabled = !isMyTurn;
+        allInBtn.style.opacity = isMyTurn ? "1" : "0.6";
+        }
     
     function handleSocketMessage(data) {
-    console.log("Received:", data);
+        console.log("Received:", data);
 
-    // Hard reset from server
-    if (data.reset) {
-        document.getElementById('board-display').textContent = 'Board: (Waiting for cards...)';
-        document.getElementById('pot-display').textContent = 'Pot: $0';
-        document.getElementById('bet-display').textContent = 'Bet: $0';
-        document.getElementById('hand-display').innerHTML = '';
-        document.getElementById('player-stats').innerHTML = '';
-        return;
-    }
+        // #MODIFIED FOR ALL-IN
+        if (data.debug_user_id) {
+        console.log("[DEBUG] server sees me as:", data.debug_user_id);
+        }
+        if (data && data.action === "your_turn") {
+        console.log("[TURN] your_turn");
+        const allInBtn = document.getElementById("all-in-btn");
+        if (allInBtn) allInBtn.disabled = false;
+        }
 
-    // Chat message
-    if (data.message) {
-        const chatLog = document.getElementById('chat-log');
-        const msg = document.createElement('div');
-        msg.textContent = data.message;
-        chatLog.appendChild(msg);
-        chatLog.scrollTop = chatLog.scrollHeight;
-    }
+        if (data && data.action === "turn_end") {
+        console.log("[TURN] turn_end");
+        const allInBtn = document.getElementById("all-in-btn");
+        if (allInBtn) allInBtn.disabled = true;
+        }
 
-    // Player update
-    if (data.player) {
-        updatePlayerStats(data.player);
-        if (data.player.hand) renderHand(data.player.hand);
-    }
+        // Hard reset from server
+        if (data.reset) {
+            document.getElementById('board-display').textContent = 'Board: (Waiting for cards...)';
+            document.getElementById('pot-display').textContent = 'Pot: $0';
+            document.getElementById('bet-display').textContent = 'Bet: $0';
+            document.getElementById('hand-display').innerHTML = '';
+            document.getElementById('player-stats').innerHTML = '';
+            return;
+        }
 
-    // Board updates
-    if (data.board) {
-        renderBoard(data.board.board);
-    }
+        // Chat message
+        if (data.message) {
+            const chatLog = document.getElementById('chat-log');
+            const msg = document.createElement('div');
+            msg.textContent = data.message;
+            chatLog.appendChild(msg);
+            chatLog.scrollTop = chatLog.scrollHeight;
+        }
 
-    // Pot updates
-    if (data.pot) {
-        document.getElementById('pot-display').textContent = `Pot: $${data.pot.pot}`;
-    }
+        // Player update
+        if (data.player) {
+            updatePlayerStats(data.player);
+            if (data.player.hand) renderHand(data.player.hand);
+        }
 
-    // Bet updates
-    if (data.bet) {
-        document.getElementById('bet-display').textContent = `Bet: $${data.bet.amount}`;
-    }
-    }
+        // Board updates
+        if (data.board) {
+            renderBoard(data.board.board);
+        }
+
+        // Pot updates
+        if (data.pot) {
+            document.getElementById('pot-display').textContent = `Pot: $${data.pot.pot}`;
+        }
+
+        // Bet updates
+        if (data.bet) {
+            document.getElementById('bet-display').textContent = `Bet: $${data.bet.amount}`;
+        }
+
+        // MODIFIED FOR ALL-IN
+        if (data.action === "your_turn") {
+            const btn = document.getElementById("all-in-btn");
+            if (btn) { btn.disabled = false; }
+            }
+
+        if (data.action === "turn_end") {
+            const btn = document.getElementById("all-in-btn");
+            if (btn) { btn.disabled = true; }
+            }
+
+        if (data.action === 'hand_over') {
+        // re-enable buttons/inputs for lobby state
+        document.getElementById('all-in-btn')?.removeAttribute('disabled');
+        }
+
+
+        }
 
     // Create Socket
     function createSocket() {
-    const socket = new WebSocket(
-        (location.protocol === 'https:' ? 'wss://' : 'ws://') +
-        location.host + '/ws/chat/' + encodeURIComponent(roomName) +
-        '/?user_id=' + encodeURIComponent(userId)
-    );
+        const socket = new WebSocket(
+            (location.protocol === 'https:' ? 'wss://' : 'ws://') +
+            location.host + '/ws/chat/' + encodeURIComponent(roomName) +
+            '/?user_id=' + encodeURIComponent(userId)
+        );
 
     socket.onopen = () => {
         console.log('[WS] Connected ✅');
@@ -158,9 +208,14 @@
         socket.close();
     };
 
+    // MANAGE ALL-IN
     socket.onmessage = (e) => {
+        try {
         const data = JSON.parse(e.data);
         handleSocketMessage(data);
+        } catch (err) {
+        console.error("[WS] bad JSON", err, e.data);
+        }
     };
 
     return socket;
@@ -368,6 +423,24 @@
         document.getElementById('send').click(); // triggers send button
     }
     });
+
+ 
+
+    // All-In button handler 
+    // #MODIFIED FOR ALL-IN
+    const allInBtn = document.getElementById("all-in-btn");
+    if (allInBtn) {
+    allInBtn.addEventListener("click", () => {
+        if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
+        window.chatSocket.send(JSON.stringify({ message: "all-in" }));
+        // Optimistically disable just this button; server will send turn_end anyway.
+        allInBtn.disabled = true;
+        } else {
+        console.warn("[ALL-IN] socket not open");
+        }
+    });
+    }
+
 
     </script>
 </body>
