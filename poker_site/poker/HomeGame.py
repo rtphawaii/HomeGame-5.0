@@ -464,6 +464,10 @@ class Table():
 
             continue_loop = False
 
+            # ✅ Safety guard for heads-up loop boundaries
+            if len(self.order) == 2 and found_index == end_index:
+                end_index = (found_index + 1) % len(self.order)
+
             # iterate seats once; may restart if someone raises
             for player in (self.order[found_index:] + self.order[:end_index]):
                 # hand ended by folds
@@ -546,18 +550,24 @@ class Table():
 
                     # Genuine raise only if they exceed current street target
                     if bet_to > round_to_dec + EPS:
-                        self.round_to = float(bet_to)  # UI uses float
+                        self.round_to = float(bet_to)
                         await self.output(f'{player} raises to {self.round_to}')
                         await self.send_to_user(player.player_id, {"action": "turn_end"})
 
-                        # restart from seat after raiser
+                        # --- restart logic ---
                         for index, p2 in enumerate(self.order):
                             if p2 == player:
                                 found_index = (index + 1) % len(self.order)
                                 break
-                        end_index = found_index
+
+                        # In heads-up, action only returns to the *other* player once
+                        if len(self.order) == 2:
+                            end_index = index  # stop on the raiser (so they don't act again)
+                        else:
+                            end_index = found_index  # standard multiway loop
+
                         continue_loop = True
-                        break  # restart outer for-loop
+                        break
 
                     # Not a raise:
                     if round_to_dec <= EPS:
@@ -720,27 +730,42 @@ class Table():
 
         def build_side_pots(bets_by_player, active_players):
             """
-            Returns list of (pot_amount, eligible_set)
-            - pot_amount: computed using ALL contributors still 'remaining' at each layer
-            - eligible_set: only players who are active (not folded) AND contributed to that layer
+            Canonical side-pot construction.
+            - bets_by_player: {player: Decimal total_contributed}
+            - active_players: players who reached showdown (didn't fold)
+            Returns: list[(pot_amount: Decimal, eligible_set: set(player))]
             """
-            items = sorted(bets_by_player.items(), key=lambda x: x[1])  # ascending by total contributed
-            pots = []
-            prev = 0
-            remaining = [p for p, _ in items]         # all contributors (folded + active)
-            active_set = set(active_players)          # showdown participants
+            # keep only positive contributors
+            contrib = {p: money(a) for p, a in bets_by_player.items() if money(a) > 0}
+            if not contrib:
+                return []
 
-            for p, amount in items:
-                diff = amount - prev
-                if diff > 0:
-                    pot_amount = diff * len(remaining)    # all contributors at this layer
-                    elig = set(remaining) & active_set    # only actives can win it
-                    pots.append((pot_amount, elig))
-                    prev = amount
-                # contributor with the smallest cap exits for deeper layers
-                if p in remaining:
-                    remaining.remove(p)
+            # distinct contribution "cap" levels, ascending
+            levels = sorted(set(contrib.values()))
+            actives = set(active_players)
+
+            pots = []
+            prev = Decimal("0.00")
+
+            # helper to sum the contribution up to a cap
+            def capped_sum(cap):
+                return sum(min(a, cap) for a in contrib.values())
+
+            for cap in levels:
+                layer_amount = money(capped_sum(cap) - capped_sum(prev))
+                if layer_amount <= 0:
+                    prev = cap
+                    continue
+
+                # Eligible players are those whose total >= this cap, and who are still active
+                elig = {p for p, a in contrib.items() if a >= cap} & actives
+                if elig:
+                    pots.append((layer_amount, elig))
+
+                prev = cap
+
             return pots
+
 
         pots = build_side_pots(bets_by_player, self.order)
 
@@ -966,7 +991,7 @@ class Table():
             await self.send_info_all({"bet": {"amount": float(self.bigblind)}})
             return
         if new_bets:
-            await self.send_info_all({"bet": {"amount": 0}})
+            await self.send_info_all({"bet": {"amount": 0.0}})
             return
         if self.bet:
             last = float(self.bet[-1][-1])  # ✅ ensure JSON-serializable
@@ -986,8 +1011,8 @@ class Table():
                 "player": {
                     "user_id": player.player_id,
                     "name": player.name,
-                    "balance": player.balance,
-                    "currentbet": player.currentbet,
+                    "balance": float(player.balance),
+                    "currentbet": float(player.currentbet),
                     "handscore": getattr(player, "handscore", None),
                     "hand": hand_pairs,
                 }
