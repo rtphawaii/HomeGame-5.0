@@ -75,8 +75,11 @@ import copy
 #UPDATE 13C - Done
 # Can now play with two players, added position() function and modified preflop Round() and bets() 
 
- #Update 13D - Pending
- # fix mobile add balance feature 
+#Update 13D - Done
+#  # fix mobile add balance feature 
+
+#UPDATE 13E - Done
+# remove redundant system messages, removed pot update messages, removed 'now dealing' (flop, turn, river) 
 
 #UPDATE 14 
 # For each time you send or maybe receive add to a game ledger, feed the entire ledger joined with separators to an open ai api and spit back a summary of the game play
@@ -135,7 +138,7 @@ class Table():
     async def flop(self):
         '''deals flop'''
         print('flop')
-        await self.output(f"now dealing the flop...")
+        #await self.output(f"now dealing the flop...")
         #burn one card
         self.deck.pop()
         #deal 3 cards to the board
@@ -161,7 +164,7 @@ class Table():
     async def turn(self):
         '''deals turn'''
         print('turn')
-        await self.output(f"now dealing the turn...")
+        #await self.output(f"now dealing the turn...")
         #burn one card
         self.deck.pop()
         #deal 1 card to the board
@@ -186,7 +189,7 @@ class Table():
     async def river(self):
         '''deals river'''
         print('~river')
-        await self.output(f"now dealing the river...")
+        #await self.output(f"now dealing the river...")
         #burn one card
         self.deck.pop()
         #deal 1 card to the board
@@ -833,7 +836,7 @@ class Table():
     
     async def pot_info_update(self):
         #send pot info
-        await self.output(f"the pot is: {self.pot}")
+        #await self.output(f"the pot is: {self.pot}")
         await self.send_info_all({
                 "pot": {
                     'pot':self.pot
