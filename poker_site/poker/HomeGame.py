@@ -613,7 +613,8 @@ class Table():
                     break  # end inner while; move to next player
                 if restart:
                     break
-                
+            if not restart:
+                return "street_done"
             if not restart:
                 return  
 
@@ -675,12 +676,13 @@ class Table():
 
     async def evaluate(self):
         print('EVALUATE')
-        # 1) If only one player remains -> instant win
+
+        # 1) If only one player remains -> instant win (fold-out)
         if len(self.order) == 1:
             winner = self.order[0]
-            winner.balance += self.pot
-            await self.output(f"everyone else folded... {winner.name} wins {self.pot}")
-            self.pot = 0
+            self._add_to_balance(winner, _money(self.pot))
+            await self.output(f"everyone else folded... {winner.name} wins {float(self.pot):.2f}")
+            self.pot = Decimal("0.00")
             await self.player_info_update_all()
             return
 
@@ -693,19 +695,6 @@ class Table():
             player.hand_forscore = hp              # optional: keep for UI/debug
             player.handscore = hp.handenum.name
             results.append((player, hp))
-
-        # --- Per-hand cleanup to allow next round to arm correctly ---
-        self.all_in.clear()
-        self.round_to = 0
-        self.bet.clear()
-        for p in self.perma_list:
-            p.currentbet = 0
-
-        # keep UI sane between hands
-        await self.bet_info_update(new_bets=True)
-        await self.pot_info_update()
-        await self.player_info_update_all()
-        
 
         # ---------- Tie handling helpers ----------
         def hands_equal(a, b):
@@ -732,84 +721,61 @@ class Table():
             return tiers
 
         ranked_tiers = tier_results_with_ties(results)  # best tier first
-        seat_index = {p: i for i, p in enumerate(self.order)}  # for deterministic remainders
-        print('HANDS RANKED',ranked_tiers)
-        # ---------- Build pots correctly (amount from all contributors, eligibility from actives) ----------
-        # Sum contributions
-        # instead of mixing "to" amounts, this now sums true contributions
+        seat_index = {p: i for i, p in enumerate(self.order)}  # deterministic remainders
 
-        # Use the definitive per-hand totals collected during betting
-        bets_by_player = dict(self.contributed)
+        # ---------- Build pots correctly from total contributions ----------
+        bets_by_player = dict(self.contributed)  # {player: Decimal total_contributed}
+        print('[EVAL] contributed:', {p.name: float(a) for p, a in bets_by_player.items()})
 
-        print('BETS BY PLAYER',bets_by_player)
-
-        def build_side_pots(bets_by_player, active_players):
-            """
-            Canonical side-pot construction.
-            - bets_by_player: {player: Decimal total_contributed}
-            - active_players: players who reached showdown (didn't fold)
-            Returns: list[(pot_amount: Decimal, eligible_set: set(player))]
-            """
-            # keep only positive contributors
-            contrib = {p: money(a) for p, a in bets_by_player.items() if money(a) > 0}
-            if not contrib:
-                return []
-
-            # distinct contribution "cap" levels, ascending
-            levels = sorted(set(contrib.values()))
-            actives = set(active_players)
-
-            pots = []
-            prev = Decimal("0.00")
-
-            # helper to sum the contribution up to a cap
-            def capped_sum(cap):
-                return sum(min(a, cap) for a in contrib.values())
-
-            for cap in levels:
-                layer_amount = money(capped_sum(cap) - capped_sum(prev))
-                if layer_amount <= 0:
-                    prev = cap
-                    continue
-
-                # Eligible players are those whose total >= this cap, and who are still active
-                elig = {p for p, a in contrib.items() if a >= cap} & actives
-                if elig:
-                    pots.append((layer_amount, elig))
-
-                prev = cap
-
-            return pots
-
-
-        pots = build_side_pots(bets_by_player, self.order)
-
-        print('POTS ',pots)
-
-        #Use Decimal so award is fixed
+        # money helpers (Decimal-safe)
         getcontext().prec = 28
         CENT = Decimal("0.01")
 
         def money(x) -> Decimal:
-            """Coerce to Decimal and quantize to 2dp."""
             if isinstance(x, Decimal):
                 return x.quantize(CENT, rounding=ROUND_HALF_UP)
             return Decimal(str(x)).quantize(CENT, rounding=ROUND_HALF_UP)
 
         def split_even(amount: Decimal, n: int):
-            """Return n Decimal shares that sum exactly to `amount` (2dp).
-            First `r` seats get an extra cent, deterministic."""
             total_cents = int((amount / CENT).to_integral_value(rounding=ROUND_HALF_UP))
             q, r = divmod(total_cents, n)
             return [(Decimal(q + (1 if i < r else 0)) * CENT) for i in range(n)]
 
-        # ---------- Award pots (tie-aware, Decimal-safe) ----------
+        def build_side_pots(bets_by_player, active_players):
+            """
+            Canonical side-pot construction using contribution caps.
+            Returns: list[(pot_amount: Decimal, eligible_set: set(player))]
+            """
+            contrib = {p: money(a) for p, a in bets_by_player.items() if money(a) > 0}
+            if not contrib:
+                return []
+
+            levels = sorted(set(contrib.values()))
+            actives = set(active_players)
+
+            def capped_sum(cap):
+                return sum(min(a, cap) for a in contrib.values())
+
+            pots, prev = [], Decimal("0.00")
+            for cap in levels:
+                layer_amount = money(capped_sum(cap) - capped_sum(prev))
+                if layer_amount > 0:
+                    elig = {p for p, a in contrib.items() if a >= cap} & actives
+                    if elig:
+                        pots.append((layer_amount, elig))
+                prev = cap
+            return pots
+
+        pots = build_side_pots(bets_by_player, self.order)
+        print('[EVAL] pots:', [(float(a), {p.name for p in s}) for a, s in pots])
+
+        # ---------- Award pots (tier-aware, Decimal-safe) ----------
         for pot_amount, elig in pots:
             pot_amount = money(pot_amount)
             if pot_amount <= 0 or not elig:
                 continue
 
-            # Find best eligible tier
+            # Find the best eligible tier (highest hand among elig set)
             winners = None
             for tier in ranked_tiers:  # best → worse
                 tier_players = [p for (p, _hp) in tier if p in elig]
@@ -817,19 +783,17 @@ class Table():
                     winners = tier_players
                     break
             if not winners:
+                # No eligible winners (shouldn't happen if elig non-empty)
                 continue
 
-            # Deterministic order for any remainder cent(s)
             winners_sorted = sorted(winners, key=lambda p: seat_index.get(p, 0))
 
             if len(winners_sorted) == 1:
-                # Single winner: take entire pot
-                winner = self.order[0]
-                self._add_to_balance(winner, self.pot)
-                await self.output(f"everyone else folded... {winner.name} wins {self.pot}")
-                self.pot = 0
-                await self.player_info_update_all()
-                return
+                # ✅ Single winner takes THIS pot_amount
+                w = winners_sorted[0]
+                self._add_to_balance(w, pot_amount)
+                await self.output(f"{w.name} wins {float(pot_amount):.2f}")
+                continue
 
             # Tie: split into exact cents
             shares = split_even(pot_amount, len(winners_sorted))
@@ -838,28 +802,29 @@ class Table():
 
             names = " & ".join(p.name for p in winners_sorted)
             if len(set(shares)) == 1:
-                await self.output(f"{names} split {pot_amount:.2f} ({shares[0]:.2f} each)")
+                await self.output(f"{names} split {float(pot_amount):.2f} ({float(shares[0]):.2f} each)")
             else:
-                # in case of uneven cents, show distribution succinctly
-                await self.output(f"{names} split {pot_amount:.2f} ({', '.join(f'{s:.2f}' for s in shares)})")
+                await self.output(
+                    f"{names} split {float(pot_amount):.2f} "
+                    f"({', '.join(f'{float(s):.2f}' for s in shares)})"
+                )
 
-        # ---------- Cleanup & broadcast ----------
-        self.pot = 0
+        # ---------- Cleanup & broadcast AFTER paying ----------
+        self.pot = Decimal("0.00")
         self.all_in.clear()
         self.round_to = 0
         self.bet.clear()
+        self.contributed.clear()  # start next hand fresh
         for pl in self.perma_list:
-            pl.currentbet = 0
+            pl.currentbet = 0.0
+
         await self.pot_info_update()
         await self.bet_info_update(new_bets=True)
         await self.player_info_update_all()
-        await self.player_info_update_all()
+
         print("[ALL-IN STATUS]", [p.name for p in self.all_in])
         print("[BETS]", [(p.name, b) for p, b in self.bet])
-        print("[POTS BUILT]", pots)
-
-
-
+        print("[POTS BUILT]", [(float(a), {p.name for p in s}) for a, s in pots])
 
 
     async def evaluate_original(self):
