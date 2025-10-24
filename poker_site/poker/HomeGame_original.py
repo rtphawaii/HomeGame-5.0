@@ -10,25 +10,8 @@ from collections import OrderedDict, defaultdict
 from decimal import Decimal, ROUND_HALF_UP, getcontext
 import random
 import copy
-from openai import OpenAI
-import os
-from dotenv import load_dotenv
-from datetime import datetime
-import json
-import string
-from collections import defaultdict
-from datetime import datetime
-from typing import Any, Dict, List, Optional
-import copy
-import traceback
-
-def avatar_from_id(pid: str) -> str:
-    choices = [f"generic-{i}.svg" for i in range(1, 9)]
-    idx = sum(ord(c) for c in str(pid)) % len(choices)
-    return f"/static/avatars/{choices[idx]}"
 
 
-#HELPER FUNCTIONS
 from decimal import Decimal, ROUND_HALF_UP, getcontext
 getcontext().prec = 28
 
@@ -43,16 +26,6 @@ def _money(x) -> Decimal:
 
 def _to_float(d: Decimal) -> float:
     return float(d.quantize(CENT))
-
-def flatten_to_string(data):
-    """Safely flatten lists/dicts into a readable string."""
-    if isinstance(data, (dict, list)):
-        try:
-            return json.dumps(data, ensure_ascii=False)
-        except Exception:
-            return str(data)
-    else:
-        return str(data)
 
 
 class Table():
@@ -81,232 +54,19 @@ class Table():
         self.send_player_info=send_player_info
         self.send_info_all=send_info_all
         self.contributed=defaultdict(Decimal)
-        self.private_ledger = defaultdict(list)
-        self.ledger=[]
-        self.round_to = Decimal("0.00") 
-
-    # ---- Players Bar: serialization + broadcasts ----
-    def _serialize_player_brief(self, p) -> dict:
-        return {
-            "id": str(p.player_id),
-            "name": getattr(p, "name", str(p)),
-            "balance": float(getattr(p, "balance", 0)),
-            "currentbet": float(getattr(p, "currentbet", 0)),
-            "avatarUrl": getattr(p, "avatar_url", None),
-        }
-
-    def _order_ids(self) -> list[str]:
-        return [str(p.player_id) for p in self.order]
-
-    def _dealer_index_for_bar(self) -> int:
-        # Your code treats self.order[0] as the Button (dealer)
-        return 0
-
-    async def broadcast_players_state(self, *, active_player_id: str | None = None):
-        payload = {
-            "type": "players_state",
-            "players": [self._serialize_player_brief(p) for p in self.perma_list],
-            "order": self._order_ids(),                  # order starting at BTN (index 0)
-            "dealer_index": self._dealer_index_for_bar()
-        }
-        if active_player_id is not None:
-            payload["active_player_id"] = str(active_player_id)
-        await self.send_info_all(payload)
-
-    async def broadcast_turn(self, player):
-        await self.send_info_all({
-            "type": "turn_update",
-            "player_id": str(player.player_id),
-        })
-
-    async def broadcast_balance_update(self, players: list | None = None):
-        if players is None:
-            players = self.perma_list
-        balances = {str(p.player_id): float(getattr(p, "balance", 0)) for p in players}
-        await self.send_info_all({
-            "type": "balance_update",
-            "balances": balances
-        })
-
-    @property
-    def currentprice(self) -> Decimal:
-        # always return Decimal total-to-price for this street
-        return _money(self.round_to)
-
-    @currentprice.setter
-    def currentprice(self, value) -> None:
-        # allow legacy code to write currentprice; forward to round_to
-        self.round_to = _money(value)
-
-    def is_unopened_pot_preflop(self) -> bool:
-        """
-        True only if it's preflop, currentprice == BB (no raise),
-        and nobody except the blind posters has voluntarily contributed > 0.
-        Also treats a limp (non-blind contributing >= BB) as 'opened'.
-        """
-        if not getattr(self, "preflop", False):
-            return False
-
-        try:
-            bb = Decimal(str(self.bigblind))
-            cur_price = Decimal(str(self.currentprice))
-        except Exception:
-            return False
-
-        # If someone raised pre, pot is opened
-        if cur_price > bb:
-            return False
-
-        # Count any non-blind voluntary contribution
-        for p in self.order:
-            try:
-                cb = Decimal(str(getattr(p, "currentbet", 0)))
-            except Exception:
-                cb = Decimal("0")
-
-            if self._is_blind_poster(p):
-                # SB is allowed to have smallblind; BB is allowed to have bigblind
-                continue
-
-            # Any non-blind chips in the middle means opened (including limps)
-            if cb > 0:
-                return False
-
-        # Additionally, guard against limper exactly matching BB (edge engines)
-        # If any non-blind has cb >= BB, it's definitely opened
-        for p in self.order:
-            if not self._is_blind_poster(p):
-                cb = Decimal(str(getattr(p, "currentbet", 0)))
-                if cb >= bb:
-                    return False
-                
-        return True
-
-    def _position_labels(self):
-        """
-        Returns a list of position labels aligned with self.order.
-        Assumes self.order[0] is the Button (BTN). Supports 2..22 players.
-        Heads-up: order[0] = BTN/SB, order[1] = BB.
-        """
-        n = len(self.order)
-        if n < 2 or n > 22:
-            raise ValueError(f"Supported players: 2..22 (got {n})")
-
-        if n == 2:
-            return ["BTN/SB", "BB"]
-
-        labels = ["BTN", "SB", "BB"]
-        m = n - 3  # middle seats
-        if m <= 0:
-            return labels
-        if m == 1:
-            middle = ["CO"]
-        elif m == 2:
-            middle = ["UTG", "CO"]
-        else:
-            utg_count = m - 2  # leave room for HJ, CO
-            utgs = ["UTG"] + [f"UTG+{i}" for i in range(1, utg_count)]
-            middle = utgs + ["HJ", "CO"]
-
-        return labels + middle
-
-    def position_of_index(self, idx: int) -> str:
-        labels = self._position_labels()
-        if idx < 0 or idx >= len(labels):
-            raise IndexError("player index out of range")
-        return labels[idx]
-
-    def position_of_player(self, player) -> str:
-        try:
-            idx = self.order.index(player)
-        except ValueError:
-            raise ValueError("player not found in self.order")
-        return self.position_of_index(idx)
-
-    def positions_map(self):
-        """Return {player_obj: 'POS', ...} for current order."""
-        labels = self._position_labels()
-        return {p: pos for p, pos in zip(self.order, labels)}
-    
-    def _is_blind_poster(self, player) -> bool:
-        """True if player is SB or BB for the current hand."""
-        labels = self._position_labels()
-        try:
-            pos = labels[self.order.index(player)]
-        except ValueError:
-            return False
-        return pos in ("SB", "BB", "BTN/SB")  # HU BTN posts SB
-
-    # hand over
-    async def _signal_hand_over_safely(self):
-        try:
-            await self.send_info_all({"action": "hand_over"})
-            # Optional: explicitly re-enable the start button
-            await self.send_info_all({"action": "start_round_prompt"})
-        except Exception:
-            pass
-
-    def _make_entry(self, event_data, *, etype: str = "event") -> Dict[str, Any]:
-        return {
-            "datetime": datetime.now().isoformat(timespec="seconds"),
-            "round": self.round,
-            "type": etype,          # "event" | "marker"
-            "event": event_data,    # any shape you already use
-        }
-
-    def _add_to_private_ledger(self, player, entry: Dict[str, Any]):
-        pid = getattr(player, "player_id", player)  # accepts Player or id
-        # use per-player copy to avoid shared dict aliasing
-        self.private_ledger[pid].append(copy.deepcopy(entry))
-
-    def ledger_event(self, event_data: Dict[str, Any]):
-        entry = self._make_entry(event_data, etype="event")
-        self.ledger.append(entry)
-        for p in self.perma_list:
-            self._add_to_private_ledger(p, entry)
-    
-    def ledger_event_gen(self, event_data: Dict[str, Any]):
-        entry = self._make_entry(event_data, etype="event")
-        self.ledger.append(entry)
-
-    def private_ledger_event(self, player, event_data: Dict[str, Any]):
-        entry = self._make_entry(event_data, etype="event")
-        self._add_to_private_ledger(player, entry)
-
-    def events_for_round(self, player, round_no: int, include_markers: bool = False) -> List[Dict[str, Any]]:
-        pid = getattr(player, "player_id", player)
-        return [
-            e for e in self.private_ledger.get(pid, [])
-            if e.get("round") == round_no and (include_markers or e.get("type") != "marker")
-        ]
-
-    def all_events_for_round(self, round_no: int, include_markers: bool = False) -> Dict[str, List[Dict[str, Any]]]:
-        return {
-            pid: [e for e in entries if e.get("round") == round_no and (include_markers or e.get("type") != "marker")]
-            for pid, entries in self.private_ledger.items()
-        }
-
-    def all_events_from_round(self, round_no: int, include_markers: bool = False) -> Dict[str, List[Dict[str, Any]]]:
-        return {
-            pid: [e for e in entries if e.get("round", 0) >= round_no and (include_markers or e.get("type") != "marker")]
-            for pid, entries in self.private_ledger.items()
-        }
-
-
     def createdeck(self):
         '''create the deck'''
         self.deck = [(rank, suit) for rank in Rank for suit in Suit]
         self.shuffledeck()
-
     def shuffledeck(self):
         random.shuffle(self.deck)
 
     async def addplayer(self, player):
         '''add a player to the game'''
+        print(f'table is adding {player}')
         self.list.append(player)
         self.perma_list.append(player)
         self.players_by_id[str(player.player_id)] = player   # ✅ index by string key
-        self.private_ledger_event(player,f'Your identity is {player}, you will soon receive a hand, if it has your player id then that is your hand')
         await self.send_to_user(player.player_id, f"you are {player}")
 
     def pickdealer(self):
@@ -338,6 +98,7 @@ class Table():
     def _money(x):
         return Decimal(str(x)).quantize(Table.CENT, rounding=ROUND_HALF_UP)
 
+    #apply delta allinmech
     def _apply_delta(self, player, delta_dec: Decimal) -> Decimal:
         """Apply a chip delta in Decimal to all ledgers + UI list."""
         delta_dec = _money(delta_dec)
@@ -348,12 +109,14 @@ class Table():
         self.contributed[player] += delta_dec
         self.pot += delta_dec
 
-        # Update balance
+        # Update balance (UI uses float)
         new_bal = _money(player.balance) - delta_dec
         if new_bal <= Decimal("0.00"):
             new_bal = Decimal("0.00")
             if player not in self.all_in:
                 self.all_in.append(player)
+                # optional: announce here if you prefer
+                # await self.output(f"{player.name} is ALL-IN")
         player.balance = _to_float(new_bal)
 
         # UI history expects floats (your bet_info_update reads self.bet[-1][-1])
@@ -428,9 +191,7 @@ class Table():
         rank1, suit1 = self.board[0]
         rank2, suit2 = self.board[1]
         rank3, suit3 = self.board[2]
-        self.ledger_event_gen(f"the flop is: {rank1.name} of {suit1.name}, {rank2.name} of {suit2.name}, {rank3.name} of {suit3.name}")
         await self.output(f"the flop is: {rank1.name} of {suit1.name}, {rank2.name} of {suit2.name}, {rank3.name} of {suit3.name}")
-        
 
         #send the update to the board
         board_flop=f"{rank1.name} of {suit1.name}, {rank2.name} of {suit2.name}, {rank3.name} of {suit3.name}"
@@ -455,7 +216,6 @@ class Table():
         rank2, suit2 = self.board[1]
         rank3, suit3 = self.board[2]
         rank4, suit4 = self.board[3]
-        self.ledger_event_gen(f"the turn is: {rank1.name} of {suit1.name}, {rank2.name} of {suit2.name}, {rank3.name} of {suit3.name}, {rank4.name} of {suit4.name}")
         await self.output(f"the turn is: {rank1.name} of {suit1.name}, {rank2.name} of {suit2.name}, {rank3.name} of {suit3.name}, {rank4.name} of {suit4.name}")
 
         #send the update to the board
@@ -483,7 +243,6 @@ class Table():
         rank4, suit4 = self.board[3]
         rank5, suit5 = self.board[4]
         print(rank5.name,suit5.name)
-        self.ledger_event_gen(f"the river is: {rank1.name} of {suit1.name}, {rank2.name} of {suit2.name}, {rank3.name} of {suit3.name}, {rank4.name} of {suit4.name}, {rank5.name} of {suit5.name}")
         await self.output(f"the river is: {rank1.name} of {suit1.name}, {rank2.name} of {suit2.name}, {rank3.name} of {suit3.name}, {rank4.name} of {suit4.name}, {rank5.name} of {suit5.name}")
 
         #send the update to the board
@@ -558,7 +317,6 @@ class Table():
     #bets
     async def bets(self, preflop: bool = False):
         print('betting started')
-        self.ledger_event(f'betting has started for this street, the players are {self.order}')
 
         if self.cancel_event and self.cancel_event.is_set():
             raise asyncio.CancelledError
@@ -577,7 +335,7 @@ class Table():
         for p in self.perma_list:
             if not preflop or (p is not getattr(self, "small_blind_player", None)
                             and p is not getattr(self, "big_blind_player", None)):
-                p.currentbet = Decimal("0.00")
+                p.currentbet = 0.0
 
         # Street target (float for UI, Decimal for math)
         if preflop:
@@ -616,19 +374,15 @@ class Table():
             for player in seats:
                 # hand ended by folds
                 if len(self.order) <= 1:
-                    self.ledger_event('all players have folded except 1')
                     return
 
                 # no action for all-in players
                 if player in self.all_in:
-                    self.ledger_event(f'{player} is all-in and has no action')
                     await self.output(f'{player} is all-in and has no action')
                     continue
 
                 # ---------- NORMAL INPUT LOOP PER PLAYER ----------
                 while True:
-                    self.ledger_event(f'{player} is now starting to bet')
-                    
                     if self.cancel_event and self.cancel_event.is_set():
                         raise asyncio.CancelledError
 
@@ -639,18 +393,17 @@ class Table():
                     to_call_dec    = target_dec - current_to_dec
 
                     # let UI know it's their turn
-                    await self.broadcast_turn(player)
                     await self.send_to_user(player.player_id, {"action": "your_turn", "target": float(target_dec)})
 
                     raw = await player.placebet(float(target_dec), cancel_event=self.cancel_event)
+                    print(f"[bets] recv raw={raw!r} from {player.name} target={target_dec} "
+                        f"curbet={player.currentbet} bal={player.balance}")
 
                     # --- FOLD (first) ---
                     if _is_fold(raw):
                         self.order.remove(player)
-                        self.ledger_event(f'{player} has folded')
                         await self.send_to_user(player.player_id, {"action": "turn_end"})
                         await self.output(f"{player} has folded")
-                        await self.broadcast_players_state()
                         if len(self.order) == 1:
                             self.gameover = True
                             return "hand_over"
@@ -708,19 +461,17 @@ class Table():
                     # apply the delta to ledgers (Decimal) and update UI meters
                     if delta > Decimal("0.00"):
                         self._apply_delta(player, delta)
-                        player.currentbet = _money(bet_to)
+                        player.currentbet = _to_float(bet_to)
                         await self.pot_info_update()
                         await self.player_info_update_all()
                         await self.bet_info_update()
-                        await self.broadcast_balance_update()
                     else:
                         # check / already-in (no chips added)
-                        player.currentbet = _money(bet_to)
+                        player.currentbet = _to_float(bet_to)
 
                     # mark all-in if they hit their cap
                     if abs(bet_to - (current_to_dec + balance_dec)) <= EPS and player not in self.all_in:
                         self.all_in.append(player)
-                        self.ledger_event(f"player {player.name} is ALL-IN for {bet_to:.2f}")
                         await self.output(f"{player.name} is ALL-IN for {bet_to:.2f}")
 
                     # ---- decide outcome: raise / call / check / short-all-in display ----
@@ -729,7 +480,6 @@ class Table():
                     # RAISE (includes first-action all-in > target)
                     if bet_to > round_to_dec + EPS:
                         self.round_to = float(bet_to)
-                        self.ledger_event(f'{player} raises to {self.round_to}')
                         await self.output(f'{player} raises to {self.round_to}')
                         await self.send_to_user(player.player_id, {"action": "turn_end"})
 
@@ -746,7 +496,6 @@ class Table():
                     # Not a raise:
                     if round_to_dec <= EPS:
                         # price == 0 → check
-                        self.ledger_event(f'{player} checks')
                         await self.output(f'{player} checks')
                         await self.send_to_user(player.player_id, {"action": "turn_end"})
                         break
@@ -755,20 +504,16 @@ class Table():
                     if abs(_money(player.currentbet) - round_to_dec) <= EPS:
                         if delta <= EPS:
                             if balance_dec > EPS:
-                                self.ledger_event(f'{player} is already in for {self.round_to}')
                                 await self.output(f'{player} is already in for {self.round_to}')
                             else:
-                                self.ledger_event(f'{player} is all-in and has no action')
                                 await self.output(f'{player} is all-in and has no action')
                         else:
-                            self.ledger_event(f'{player} calls to {self.round_to}')
                             await self.output(f'{player} calls to {self.round_to}')
                         await self.send_to_user(player.player_id, {"action": "turn_end"})
                         break
 
                     # short all-in message (cannot cover full call) — reach here only if we allowed exact all-in
                     if bet_to + EPS < round_to_dec:
-                        self.ledger_event(f'{player} is all-in short for {bet_to:.2f} (cannot cover full call)')
                         await self.output(f'{player} is all-in short for {bet_to:.2f} (cannot cover full call)')
                         await self.send_to_user(player.player_id, {"action": "turn_end"})
                         break
@@ -783,7 +528,6 @@ class Table():
 
             # If nobody raised, keep iterating to next player (don’t end after first action)
             if not restart:
-                self.ledger_event('the betting is now done for this street')
                 # We finished a full pass with no raise → street done
                 return "street_done"
 
@@ -795,13 +539,9 @@ class Table():
         if len(self.order) == 1:
             winner = self.order[0]
             self._add_to_balance(winner, _money(self.pot))
-            self.ledger_event(f"everyone else folded... {winner.name} wins {float(self.pot):.2f}")
             await self.output(f"everyone else folded... {winner.name} wins {float(self.pot):.2f}")
             self.pot = Decimal("0.00")
             await self.player_info_update_all()
-
-            # clear board
-            await self.send_info_all({"board": {"clear": True}})
             return
 
         # ---------- Parse hands WITHOUT mutating player.hand ----------
@@ -910,7 +650,6 @@ class Table():
                 # ✅ Single winner takes THIS pot_amount
                 w = winners_sorted[0]
                 self._add_to_balance(w, pot_amount)
-                self.ledger_event(f"{w.name} wins {float(pot_amount):.2f}")
                 await self.output(f"{w.name} wins {float(pot_amount):.2f}")
                 continue
 
@@ -921,11 +660,8 @@ class Table():
 
             names = " & ".join(p.name for p in winners_sorted)
             if len(set(shares)) == 1:
-                self.ledger_event(f"{names} split {float(pot_amount):.2f} ({float(shares[0]):.2f} each)")
                 await self.output(f"{names} split {float(pot_amount):.2f} ({float(shares[0]):.2f} each)")
             else:
-                self.ledger_event(f"{names} split {float(pot_amount):.2f} "
-                    f"({', '.join(f'{float(s):.2f}' for s in shares)})")
                 await self.output(
                     f"{names} split {float(pot_amount):.2f} "
                     f"({', '.join(f'{float(s):.2f}' for s in shares)})"
@@ -943,23 +679,20 @@ class Table():
         await self.pot_info_update()
         await self.bet_info_update(new_bets=True)
         await self.player_info_update_all()
-        await self.broadcast_balance_update()
-
-        #clear board
-        await self.send_info_all({"board": {"clear": True}})
 
         print("[ALL-IN STATUS]", [p.name for p in self.all_in])
         print("[BETS]", [(p.name, b) for p, b in self.bet])
         print("[POTS BUILT]", [(float(a), {p.name for p in s}) for a, s in pots])
+
 
     async def fold_check(self):
         if len(self.order)==1:
             # self.order[0].balance+=self.pot
             print(f'everyone else folded... {self.order[0].name} wins {self.pot}')
             await self.output(f"everyone else folded... {self.order[0].name} wins {self.pot}")
-            # asyncio.create_task(self.game_summary())
             self.gameover=True
   
+        
     def potcalc(self):
         #takes the latest bets from each player unless the player bet then folded
         latest_bets = {}
@@ -999,31 +732,22 @@ class Table():
             p.currentbet = 0.0
 
     async def pot_info_update(self):
-        data={
+        await self.send_info_all({
             "pot": {
                 "pot": float(self.pot)  # ← cast to float
             }
-        }
-        self.ledger_event(data)
-        await self.send_info_all(data)
+        })
     
     async def bet_info_update(self, blinds_start=False, new_bets=False):
         if blinds_start:
-            data={"bet": {"amount": float(self.bigblind)}}
-            ledger_msg={"bet": {"amount": float(self.bigblind)},'type':'blind'}
-            self.ledger_event(data)
-            await self.send_info_all(data)
+            await self.send_info_all({"bet": {"amount": float(self.bigblind)}})
             return
         if new_bets:
-            data={"bet": {"amount": 0.0}}
-            self.ledger_event(data)
-            await self.send_info_all(data)
+            await self.send_info_all({"bet": {"amount": 0.0}})
             return
         if self.bet:
             last = float(self.bet[-1][-1])  # ✅ ensure JSON-serializable
-            data={"bet": {"amount": last}}
-            self.ledger_event(data)
-            await self.send_info_all(data)
+            await self.send_info_all({"bet": {"amount": last}})
 
     
     async def player_info_update(self):
@@ -1035,7 +759,7 @@ class Table():
                 (rank1, suit1), (rank2, suit2) = player.hand[:2]
                 hand_pairs = [(rank1.name, suit1.name), (rank2.name, suit2.name)]
 
-            data={
+            await self.send_player_info(player.player_id, {
                 "player": {
                     "user_id": player.player_id,
                     "name": player.name,
@@ -1044,10 +768,7 @@ class Table():
                     "handscore": getattr(player, "handscore", None),
                     "hand": hand_pairs,
                 }
-            }
-            self.private_ledger_event(player,data)
-            await self.send_player_info(player.player_id,data)
-
+            })
 
 
     async def player_info_update_all(self):
@@ -1058,7 +779,8 @@ class Table():
             if len(player.hand) >= 2:
                 (rank1, suit1), (rank2, suit2) = player.hand[:2]
                 hand_pairs = [(rank1.name, suit1.name), (rank2.name, suit2.name)]
-            data={
+
+            await self.send_player_info(player.player_id, {
                 "player": {
                     "user_id": player.player_id,
                     "name": player.name,
@@ -1067,13 +789,17 @@ class Table():
                     "handscore": getattr(player, "handscore", None),
                     "hand": hand_pairs,
                 }
-            }
-            self.private_ledger_event(player,data)
-            await self.send_player_info(player.player_id, data)
+            })
 
 
     async def update_handscore(self):
         for player in self.perma_list:
+            # player.hand_forscore=None
+            # player.handscore=None
+            # player.hand_forscore = HandParser(player.hand)
+            # player.hand_forscore += self.board
+            # player.handscore=player.hand_forscore.handenum.name
+
             # 1) Build a fresh snapshot; never pass references you might mutate later
             hole = list(player.hand)      # copy
             board = list(self.board)      # copy
@@ -1090,13 +816,8 @@ class Table():
     async def Round(self,bet=0):
         if self.cancel_event and self.cancel_event.is_set():
             raise asyncio.CancelledError
-        
-        marker = self._make_entry({"marker": "ROUND_START"}, etype="marker")
-        self.ledger.append(marker)
 
-        for p in self.perma_list:
-            self._add_to_private_ledger(p, marker)
-
+        print('round enter')
         # --- per-hand reset ---
         self.gameover = False
         self.pot = Decimal("0.00")
@@ -1112,11 +833,8 @@ class Table():
         # access via consumer.state if you keep a ref there
         if hasattr(self, "send_to_user"):  # we have the consumer bound
             try:
-                st = self.input.__self__.state
-                for k, f in list(st.get("pending_inputs_all", {}).items()):
-                    if not f.done():
-                        f.set_result("round starting")
-                st.get("pending_inputs_all", {}).clear()
+                # clear any leftover "awaiting all" so it can't eat bets
+                self.input.__self__.state["pending_inputs_all"].pop("awaiting all", None)
             except Exception:
                 pass
 
@@ -1168,9 +886,10 @@ class Table():
         if self.round==1:
             #pick a dealer
             self.pickdealer()
+            print('dealer picked')
             self.startingorder=copy.copy(self.order)
+        print(self.order)
         await self.output(f"{self.order[0]} is the dealer - the order is {self.order}")
-        self.ledger_event(f"{self.order[0]} is the dealer - the order is {self.order}")
         #create a new deck
         self.createdeck()
         #shuffle the deck
@@ -1178,17 +897,12 @@ class Table():
         #deal each player 2 cards 
         self.deal()
         for player in self.order:
-            print(f'{player} hand is: ',player.hand)
+            print(player.hand)
+            print(type(player.hand[0][0]))
             rank1, suit1 = player.hand[0]
             rank2, suit2 = player.hand[1]
             msg = f"your hand is {rank1.name} of {suit1.name}, {rank2.name} of {suit2.name}"
-            ledger_msg=f'{player}, you have the hand {rank1.name} of {suit1.name}, {rank2.name} of {suit2.name}'
-            ledger_msg_hand=f'{player} has the hand {rank1.name} of {suit1.name}, {rank2.name} of {suit2.name}'
-            self.private_ledger_event(player,ledger_msg)
-            self.ledger_event_gen(ledger_msg_hand)
-            #print('LEDGER TEST',ledger_msg,flatten_to_string(self.private_ledger))
             await self.send_to_user(player.player_id, msg)
-        
 
         #sends an update to player info
         await self.player_info_update()
@@ -1207,8 +921,6 @@ class Table():
         sbp = self.order[sb_idx]
         bbp = self.order[bb_idx]
 
-        self.ledger_event(f'the dealer is {dealer_idx}, the small blind player is {sbp}, the big blind player is {bbp}, the value of both blinds is 0.1 each and the blinds have been posted')
-
         # Post blinds using Decimal-safe helper
         sb_amt = _money(self.smallblind)
         bb_amt = _money(self.bigblind)
@@ -1217,9 +929,9 @@ class Table():
         self._apply_delta(bbp, bb_amt)
 
         # UI-facing per-street meters remain floats
-        sbp.currentbet = _money(sb_amt)   # Decimal
-        bbp.currentbet = _money(bb_amt)   # Decimal
-        self.round_to  = _money(bb_amt)   # Decimal (source of truth!)
+        sbp.currentbet = _to_float(sb_amt)
+        bbp.currentbet = _to_float(bb_amt)
+        self.round_to = _to_float(bb_amt)
 
         # Remember who posted blinds (bets() reads these safely)
         self.small_blind_player = sbp
@@ -1228,36 +940,29 @@ class Table():
         await self.pot_info_update()
         await self.bet_info_update(blinds_start=True)
 
-        # === Players Bar init ===
-        n = len(self.order)
-        # Preflop, first to act is after the big blind
-        first_to_act_idx = (bb_idx + 1) % n
-        first_to_act_pid = self.order[first_to_act_idx].player_id
-
-        await self.broadcast_players_state(active_player_id=first_to_act_pid)
-
 
         #reset
         if self.cancel_event and self.cancel_event.is_set():
                 raise asyncio.CancelledError
-        
-        self.ledger_event('Preflop betting begins.')
 
         # Preflop betting begins vs target == BB (bets() will set self.round_to accordingly)
         res = await self.bets(preflop=True)
-
         if res == "hand_over" or self.gameover:
             await self.pot_info_update()          # optional: refresh UI before paying
             await self.player_info_update_all()   # optional
             await self.evaluate()                 # ✅ pay once here
-            await self._signal_hand_over_safely()   
             # ✅ rotate for the NEXT hand now
             self.round = getattr(self, "round", 1) + 1
             n = (self.round - 1) % len(self.startingorder)
             self.order = self.startingorder[n:] + self.startingorder[:n]
-            await self.broadcast_players_state()
             return
 
+        print('after preflop betting loop these players remain: ',self.list)
+
+        #calculate the pot for preflop
+        #self.pot=self.potcalc()
+        print('pot is: ',self.pot)
+        print('preflop betting list: ',self.bet)
 
         #send pot info
         await self.pot_info_update()
@@ -1276,8 +981,6 @@ class Table():
 
             if self.cancel_event and self.cancel_event.is_set():
                 raise asyncio.CancelledError
-            
-            self.ledger_event(f'the flop has been dealt, the flop is: {self.board}')
 
             #self.bet=[]
             res = await self.bets()
@@ -1285,20 +988,24 @@ class Table():
                 await self.pot_info_update()
                 await self.player_info_update_all()
                 await self.evaluate()
-                await self._signal_hand_over_safely()
                 self.round = getattr(self, "round", 1) + 1
                 n = (self.round - 1) % len(self.startingorder)
-                self.order = self.startingorder[n:] + self.startingorder[:n]
-                await self.broadcast_players_state()                
+                self.order = self.startingorder[n:] + self.startingorder[:n]                
                 return
+            print(self.bet)
 
-            #update
+            #sends an update to player info
             await self.player_info_update()
+
+            #self.pot+=self.potcalc()
+            print('pot:',self.pot)
             await self.output(f"the pot is: {self.pot}")
+
+            #send pot info
             await self.pot_info_update()
             await self.player_info_update()
-            await self.fold_check()
 
+            await self.fold_check()
         if self.gameover==False:
             #turn
 
@@ -1308,30 +1015,33 @@ class Table():
             await self.turn()
             self.preflop=False
 
-            self.ledger_event(f'the turn has been dealt, the turn is: {self.board}')
-
             if self.cancel_event and self.cancel_event.is_set():
                 raise asyncio.CancelledError
             
+            #self.bet=[]
             res = await self.bets()
             if res == "hand_over" or self.gameover:
                 await self.pot_info_update()
                 await self.player_info_update_all()
                 await self.evaluate()
-                await self._signal_hand_over_safely()
                 self.round = getattr(self, "round", 1) + 1
                 n = (self.round - 1) % len(self.startingorder)
                 self.order = self.startingorder[n:] + self.startingorder[:n]
-                await self.broadcast_players_state()
                 return
 
-            #update
+            #sends an update to player info
             await self.player_info_update()
+
+            print(self.bet)
+            #self.pot+=self.potcalc()
+            print('pot:',self.pot)
             await self.output(f"the pot is: {self.pot}")
+
+            #send pot info
             await self.pot_info_update()
             await self.player_info_update()
-            await self.fold_check()
 
+            await self.fold_check()
         if self.gameover==False:
             if self.cancel_event and self.cancel_event.is_set():
                 raise asyncio.CancelledError
@@ -1339,10 +1049,10 @@ class Table():
             await self.river()
             self.preflop=False
 
-            self.ledger_event(f'the river has been dealt, the river is: {self.board}')
             if self.cancel_event and self.cancel_event.is_set():
                 raise asyncio.CancelledError
 
+            #self.bet=[]
             res = await self.bets()
             if res == "hand_over" or self.gameover:
                 await self.pot_info_update()
@@ -1351,12 +1061,17 @@ class Table():
                 self.round = getattr(self, "round", 1) + 1
                 n = (self.round - 1) % len(self.startingorder)
                 self.order = self.startingorder[n:] + self.startingorder[:n]
-                await self.broadcast_players_state()
                 return
+            print(self.bet)
 
-            #update
+            #sends an update to player info
             await self.player_info_update()
+
+            #self.pot+=self.potcalc()
+            print('pot:',self.pot)
             await self.output(f"the pot is: {self.pot}")
+
+            #send pot info
             await self.pot_info_update()
             await self.player_info_update()
 
@@ -1367,13 +1082,19 @@ class Table():
             
             await self.fold_check()
             await self.evaluate()
-            await self._signal_hand_over_safely()     
+            await self.send_info_all({"action": "hand_over"})
 
         #changed from list to order 
         for x in self.order:
             print(x,'  ','balance:',x.balance)
             await self.output(f"{x} has the balance: {x.balance}")
             print(x, x.hand)
+            #fails here on second round of game specifically for players that fold - has to do with evaluate
+            #print(x.hand.cards)
+            # readable_cards = [f"{rank.name} of {suit.name}" for rank, suit in x.hand]
+            # print(x.hand.handenum)
+            # await self.output(f"{x} has a {str(x.hand.handenum.name)} with the cards {', '.join(readable_cards)}")
+            # hole & board snapshots (copies to avoid aliasing)
             hole  = list(x.hand)          # [('SEVEN','DIAMOND'), ('QUEEN','SPADE')] via enums
             board = list(self.board)      # 0..5 board cards
 
@@ -1395,9 +1116,11 @@ class Table():
         for x in self.list:
             #reset hand for next round
             x.hand=[]
+            print(f'hand reset for {x}')
         
         #sends an update to player info
         for player in self.list:
+            print(f"Sending stats to {player.player_id}:", player.balance)
             await self.send_player_info(player.player_id, {
                 "player": {
                     "name": player.name,
@@ -1407,22 +1130,31 @@ class Table():
                     "hand": ['']
                 }
             })
-
+            print(f'info update sent to player {player}')
+        
+        # #reset variables for next round
+        # self.order=[]
+        # self.pot=0
+        # self.currentprice=self.bigblind
+        # self.bet=[]
+        # self.board=[]
+        # self.deck=[]
+        # self.rank=[]
+        # self.preflop=True
         self.rivercheck=False
 
-        try:
-            await self.pot_info_update()
-        except Exception as e:
-            pass
+        #reset pot
+        await self.pot_info_update()
 
-        try:
-            await self.send_info_all({"board": {"board": "new round"}})
-        except Exception as e:
-            pass
-  
+        #reset board
+        await self.send_info_all({
+                "board": {
+                    'board':'new round'
+                }})
+
+
         #change order for next round
         self.round+=1
-        print('THE ROUND IS: ',self.round)
         self.gameover=False
 
         #rotate button clockwise and wrap
@@ -1441,20 +1173,21 @@ class Player():
         self.balance=balance
         self.out_of_balance=False
         self.hand=[]
+        #need to fix currentbet
         self.currentbet=0
+        #need to fix handscore
         self.handscore=None
         self.hand_forscore=None
         self.table=table
-        self.name=f'{self.player_id[-5:]}'
+        self.name=f'player #{self.player_id[:5]}'
         self._bal_lock = asyncio.Lock()
-        self.avatar_url = avatar_from_id(player_id)
 
     def __repr__(self):
         return (f'{self.name}')
     
     # MANAGE ALL-IN
     async def placebet(self, current_price, valid=True, cancel_event=None):
-        # print(f"[placebet] prompt for {self.player_id[:5]} target={current_price} bal={self.balance} curbet={self.currentbet}")
+        print(f"[placebet] prompt for {self.player_id[:5]} target={current_price} bal={self.balance} curbet={self.currentbet}")
         while True:
             raw = await self.table.input(
                 self.player_id,
@@ -1497,6 +1230,51 @@ class Player():
 
             return bet
 
+
+    # async def placebet(self, current_price, valid=True, cancel_event=None):
+    #     print("[DEBUG] Prompting player:", self.player_id)
+    #     '''place a bet'''
+    #     if valid == False:
+    #         while True:
+    #             try:
+    #                 print('placebet enter invalid bet attempted')
+    #                 bet = float(await self.table.input(self.player_id,f'{self.name}, price is {current_price}, place your bet (0 for check, -1 for fold): ', cancel_event=cancel_event))
+    #                 if bet <= self.balance:  # Check if bet is within balance
+
+    #                     #MODIFIED FOR ALL-IN
+    #                     if bet==self.balance:
+    #                         self.table.all_in.append(self)
+    #                         print(f'{self} is now all-in')
+    #                     #working on all-in
+
+    #                     return bet
+    #                 else:
+    #                     await self.table.send_to_user(self.player_id,"Invalid bet. Bet exceeds balance.")
+    #             except ValueError:
+    #                 await self.table.send_to_user(self.player_id,"Invalid input. Please enter a valid number.")
+    #     else:
+    #         while True:
+    #             print('placebet enter')
+    #             try:
+    #                 print('placebet valid input')
+    #                 bet = float(await self.table.input(self.player_id,f'{self.name}, price is {current_price}, place your bet (0 for check, -1 for fold): ',cancel_event=cancel_event))
+    #                 print('placebet valid done')
+    #                 if bet <= self.balance:  # Check if bet is within balance
+    #                     print('bet: ',bet)
+
+    #                     #working on all-in 
+    #                     if bet == self.balance:
+    #                         self.table.all_in.append(self)
+    #                         await self.table.output(f"{self.name} is all-in for {bet}")
+    #                         return bet
+    #                     #working on all-in
+                        
+    #                     return bet
+    #                 else:
+    #                     await self.table.send_to_user(self.player_id,"Invalid bet. Bet exceeds balance.")
+    #             except ValueError:
+    #                 await self.table.send_to_user(self.player_id,"Invalid input. Please enter a valid number.")
+
     async def add_balance(self, amount):
         try:
             inc = _money(amount)
@@ -1518,106 +1296,9 @@ class Player():
         await self.table.player_info_update_all()
 
 import asyncio
-
 async def run_game(player_ids, consumer, smallblind=.10, bigblind=.10, room_name=None, cancel_event=None):
     table = Table(
         smallblind, bigblind,
-        output=consumer.broadcast_system,
-        input=consumer.get_input,
-        send_to_user=consumer.send_to_user,
-        send_player_info=consumer.send_player_info,
-        send_info_all=consumer.send_info_all,
-    )
-    table.cancel_event = cancel_event
-
-    for pid in player_ids:
-        player = Player(player_id=pid, balance=20, table=table)
-        await table.addplayer(player)
-
-    consumer.table = table
-    if isinstance(getattr(consumer, "state", None), dict):
-        consumer.state["table"] = table
-
-    def _clear_all_futures():
-        state = getattr(consumer, "state", {})
-        # per-user
-        for fut in list(state.get("pending_inputs", {}).values()):
-            if not fut.done():
-                fut.set_result("hand over")
-        state.get("pending_inputs", {}).clear()
-        # group: clear ALL keys
-        for k, f in list(state.get("pending_inputs_all", {}).items()):
-            if not f.done():
-                f.set_result("hand over")
-        state.get("pending_inputs_all", {}).clear()
-
-    try:
-        await consumer.broadcast_system(f"🎮 Room ready in {room_name or 'room'} — players: {len(player_ids)}")
-
-        while True:
-            if cancel_event and cancel_event.is_set():
-                raise asyncio.CancelledError
-
-            _clear_all_futures()
-
-            # 🟢 Tell clients the next round can be started (enable button)
-            await consumer.send_info_all({"action": "start_round_prompt"})
-
-            rsp = await consumer.get_input_all(
-                '✅ Game is ready. Type or press **Start New Round** to begin',
-                cancel_event=cancel_event,
-            )
-
-            if str(rsp).strip().lower() != "start new round":
-                await consumer.broadcast_system('[INVALID ENTRY] Please type **start new round**')
-                await asyncio.sleep(0)
-                continue
-
-            # 🔒 Round is starting: disable the button on clients
-            await consumer.send_info_all({"action": "round_started"})
-
-            await table.Round()
-            _clear_all_futures()
-
-            # 🗣️ Show commentator summary before prompting next round
-            try:
-                table.ledger=[]
-            except asyncio.TimeoutError:
-                await consumer.broadcast_system("[SYSTEM]: Summary delayed.")
-            except Exception as e:
-                print(f"[SUMMARY ERROR] {e}")
-
-            # 🟢 Now show the next-round prompt
-            # await consumer.broadcast_system("🟢 Hand finished. Type **start new round** or press the button.")
-            await consumer.send_info_all({"action": "start_round_prompt"})
-            await asyncio.sleep(0)
-
-
-    except asyncio.CancelledError:
-        return {"status": "cancelled", "players": player_ids}
-    except Exception:
-        tb = traceback.format_exc()
-        print("[GAME CRASH]\n", tb)
-        try:
-            await consumer.broadcast_system(f"💥 Game crashed:\n{tb}")
-        except Exception:
-            pass
-        return {"status": "error", "players": player_ids}
-
-
-import random
-import string
-from decimal import Decimal
-
-async def run_game_cpu(cpu_count, player_ids, consumer, smallblind=.10, bigblind=.10, room_name=None, cancel_event=None):
-    # 0) Early cancel if restart hit before we even begin
-    if cancel_event and cancel_event.is_set():
-        return {"status": "cancelled", "players": player_ids}
-
-    # 1) Build table and players
-    table = Table(
-        Decimal(str(smallblind)),
-        Decimal(str(bigblind)),
         output=consumer.broadcast_system,
         input=consumer.get_input,          # supports cancel_event
         send_to_user=consumer.send_to_user,
@@ -1627,86 +1308,50 @@ async def run_game_cpu(cpu_count, player_ids, consumer, smallblind=.10, bigblind
     table.cancel_event = cancel_event
 
     for pid in player_ids:
-        if cancel_event and cancel_event.is_set():
-            return {"status": "cancelled", "players": player_ids}
         player = Player(player_id=pid, balance=20, table=table)
         await table.addplayer(player)
-    
-    for _ in range(cpu_count):
-        if cancel_event and cancel_event.is_set():
-            return {"status": "cancelled", "players": player_ids}
-        cpu_id = ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(15))
-        new_cpu = LLMPokerBot(cpu_id, balance=20, table=table)
-        await table.addplayer(new_cpu)
 
-    # 2) Bind table back to consumer + shared state
     consumer.table = table
     if isinstance(getattr(consumer, "state", None), dict):
         consumer.state["table"] = table
 
-    # 3) Announce readiness
     try:
-
-        def _clear_all_futures():
-            state = getattr(consumer, "state", {})
-            # per-user
-            for fut in list(state.get("pending_inputs", {}).values()):
-                if not fut.done():
-                    fut.set_result("hand over")
-            state.get("pending_inputs", {}).clear()
-            # group: clear ALL keys
-            for k, f in list(state.get("pending_inputs_all", {}).items()):
-                if not f.done():
-                    f.set_result("hand over")
-            state.get("pending_inputs_all", {}).clear()
-
-        while True:
+        round_continue = True
+        while round_continue:
             if cancel_event and cancel_event.is_set():
                 raise asyncio.CancelledError
 
-            _clear_all_futures()
+            round_continue = False
+            pending_response = True
+            while pending_response:
+                rsp = await consumer.get_input_all(
+                    '✅ Game is ready. Type **start new round** to begin',
+                    cancel_event=cancel_event,
+                )
+                if str(rsp).strip().lower() == "start new round":
+                    await table.Round()
 
-            # 🟢 Tell clients the next round can be started (enable button)
-            await consumer.send_info_all({"action": "start_round_prompt"})
+                    # Clear any dangling per-user or group futures from the last hand
+                    state = getattr(consumer, "state", {})
+                    for fut in list(state.get("pending_inputs", {}).values()):
+                        if not fut.done():
+                            fut.set_result("hand over")
+                    state.get("pending_inputs", {}).clear()
 
-            rsp = await consumer.get_input_all(
-                '✅ Game is ready. Type or press **Start New Round** to begin',
-                cancel_event=cancel_event,
-            )
+                    f_all = state.get("pending_inputs_all", {}).pop("awaiting all", None)
+                    if f_all and not f_all.done():
+                        f_all.set_result("hand over")
 
-            if str(rsp).strip().lower() != "start new round":
-                await consumer.broadcast_system('[INVALID ENTRY] Please type **start new round**')
-                await asyncio.sleep(0)
-                continue
+                    # Tell clients the hand is done and re-arm the next prompt
+                    await consumer.broadcast_system("🟢 Hand finished. Type **start new round** or press the button.")
 
-            # 🔒 Round is starting: disable the button on clients
-            await consumer.send_info_all({"action": "round_started"})
-
-            await table.Round()
-            _clear_all_futures()
-
-            # 🗣️ Show commentator summary before prompting next round
-            try:
-                table.ledger=[]
-            except asyncio.TimeoutError:
-                await consumer.broadcast_system("[SYSTEM]: Summary delayed.")
-            except Exception as e:
-                print(f"[SUMMARY ERROR] {e}")
-
-            # 🟢 Now show the next-round prompt
-            await consumer.send_info_all({"action": "start_round_prompt"})
-            await asyncio.sleep(0)
-
+                    round_continue = True
+                    pending_response = False
+                else:
+                    await consumer.broadcast_system('[INVALID ENTRY] Please type **start new round**')
     except asyncio.CancelledError:
         return {"status": "cancelled", "players": player_ids}
-    except Exception:
-        tb = traceback.format_exc()
-        print("[GAME CRASH]\n", tb)
-        try:
-            await consumer.broadcast_system(f"💥 Game crashed:\n{tb}")
-        except Exception:
-            pass
-        return {"status": "error", "players": player_ids}
+    return {"status": "started", "players": player_ids}
 
 
 

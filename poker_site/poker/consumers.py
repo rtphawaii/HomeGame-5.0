@@ -1,12 +1,13 @@
 from channels.generic.websocket import AsyncWebsocketConsumer
 import json
 import random
-from .HomeGame import run_game
+from .HomeGame import run_game, run_game_cpu
 import asyncio
 from decimal import Decimal, InvalidOperation
 
 #Notes
 #environments open: (env)(base)
+#source env/bin/activate
 #daphne poker_site.asgi:application
 
 ROOMS = {}  # room_name -> {
@@ -26,10 +27,28 @@ def room_state(name: str):
             "player_count": None,
             "game_started": False,
             "table": None,
-            "cancel_event": asyncio.Event(),   # ⬅️ new
-            "game_task": None,                 # ⬅️ new
+            "cancel_event": asyncio.Event(),
+            "game_task": None,
+            "queued_start_round": False,   # ⬅️ NEW
         }
     return ROOMS[name]
+
+def room_state_cpu(name: str):
+    if name not in ROOMS:
+        ROOMS[name] = {
+            "players": {},
+            "cpu_count": None,
+            "pending_inputs": {},
+            "pending_inputs_all": {},
+            "player_count": None,
+            "game_started": False,
+            "table": None,
+            "cancel_event": asyncio.Event(),
+            "game_task": None,
+            "queued_start_round": False,   # ⬅️ NEW
+        }
+    return ROOMS[name]
+
 
 def clear_all_rooms():
     """
@@ -62,41 +81,64 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.room_name = self.scope["url_route"]["kwargs"]["room_name"]
         self.group_name = f"chat_{self.room_name}"
 
-        #MODIFIED ALL-IN
         from urllib.parse import parse_qs
-        qs = parse_qs(self.scope.get("query_string", b"").decode("utf-8"))
-        self.user_id = (qs.get("user_id") or [""])[0]
+        # from query string
+        qs = parse_qs(self.scope.get("query_string", b"").decode())
+        self.user_id   = (qs.get("user_id", ["anon"])[0])[:128]
+        self.room_type = (qs.get("room_type", ["human"])[0])  # "human" or "cpu"
+
+        # keep groups separate by type to avoid x-talk
+        self.group_name = f"chat_{self.room_type}_{self.room_name}"
         print(f"✅ CONNECT user_id={self.user_id} room={self.room_name}")
 
-        self.state = room_state(self.room_name)
+    
+        # IF CPU Game/Room -> goes through if condition
+        if self.room_type == "cpu":
+            self.state = room_state_cpu(self.room_name)
+            # Register player in this room
+            self.state["players"][self.user_id] = self
 
-        # Register player in this room
-        self.state["players"][self.user_id] = self
+            await self.channel_layer.group_add(self.group_name, self.channel_name)
+            await self.accept()
+            print(f"✅ CONNECT {self.user_id} → room {self.room_name} (players={list(self.state['players'])})")
+            await self.send(text_data=json.dumps({"debug_user_id": self.user_id}))
 
-        await self.channel_layer.group_add(self.group_name, self.channel_name)
-        await self.accept()
-        print(f"✅ CONNECT {self.user_id} → room {self.room_name} (players={list(self.state['players'])})")
-        await self.send(text_data=json.dumps({"debug_user_id": self.user_id}))
+            # Only first connector prompts for cpu count
+            if self.state["cpu_count"] is None and not self.state["pending_inputs"]:
+                asyncio.create_task(self.prompt_cpu_count())
+            # Try to start if cpu_count was already set (e.g., reconnects)
+            await self.maybe_start_cpu_game()
+
+        # IF HUMAN GAME -> goes through as normal
+        else:
+            self.state = room_state(self.room_name)
+            # Register player in this room
+            self.state["players"][self.user_id] = self
+
+            await self.channel_layer.group_add(self.group_name, self.channel_name)
+            await self.accept()
+            print(f"✅ CONNECT {self.user_id} → room {self.room_name} (players={list(self.state['players'])})")
+            await self.send(text_data=json.dumps({"debug_user_id": self.user_id}))
 
 
-        # Only first connector prompts for player_count
-        if self.state["player_count"] is None and not self.state["pending_inputs"]:
-            asyncio.create_task(self.prompt_player_count())
+            # Only first connector prompts for player_count
+            if self.state["player_count"] is None and not self.state["pending_inputs"]:
+                asyncio.create_task(self.prompt_player_count())
 
-        if (not self.state["game_started"]
-            and self.state["player_count"] is not None
-            and len(self.state["players"]) == self.state["player_count"]):
-            self.state["game_started"] = True
-            self.state["cancel_event"].clear()
-            self.state["game_task"] = asyncio.create_task(
-                run_game(list(self.state["players"].keys()),
-                        self,
-                        smallblind=.10, bigblind=.10,
-                        room_name=self.room_name,
-                        cancel_event=self.state["cancel_event"])  # ⬅️ pass it through
-            )
+            if (not self.state["game_started"]
+                and self.state["player_count"] is not None
+                and len(self.state["players"]) == self.state["player_count"]):
+                self.state["game_started"] = True
+                self.state["cancel_event"].clear()
+                self.state["game_task"] = asyncio.create_task(
+                    run_game(list(self.state["players"].keys()),
+                            self,
+                            smallblind=.10, bigblind=.10,
+                            room_name=self.room_name,
+                            cancel_event=self.state["cancel_event"])  # ⬅️ pass it through
+                )
 
-            await self.broadcast_system(f"🎮 Game started in {self.room_name} — players: {len(self.state['players'])}")
+                await self.broadcast_system(f"🎮 Game started in {self.room_name} — players: {len(self.state['players'])}")
 
     async def disconnect(self, code):
         await self.channel_layer.group_discard(self.group_name, self.channel_name)
@@ -110,9 +152,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def broadcast_system(self, msg):
         for player in self.state["players"].values():
             await player.send(text_data=json.dumps({'message': f'[SYSTEM]: {msg}'}))
-
-    # ↓↓↓ replace every ChatConsumer.<dict> access with self.state[...] ↓↓↓
-    # pending_inputs / pending_inputs_all / players / player_count / game_started
 
     async def prompt_player_count(self):
         while True:
@@ -133,6 +172,40 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 break
             except ValueError:
                 await self.send_to_user(self.user_id, '❌ Invalid entry. Please enter an integer between 2 and 22.')
+    
+    async def prompt_cpu_count(self):
+        while True:
+            try:
+                input_value = await self.get_input(
+                    self.user_id,
+                    f'🎲 Enter number of cpu players for room "{self.room_name}":'
+                )
+                self.state["cpu_count"] = int(input_value)
+
+                # enforce range 1..22
+                if not (1 <= self.state["cpu_count"] <= 22):
+                    self.state["cpu_count"] = None
+                    raise ValueError
+
+                # Clear futures
+                for _uid, fut in list(self.state["pending_inputs"].items()):
+                    if not fut.done():
+                        fut.set_result('cpu count done')
+                self.state["pending_inputs"].clear()
+
+                await self.broadcast_system(
+                    f"🔢 Total player count (including cpu) set to {self.state['cpu_count'] + 1}"
+                )
+
+                # Now that cpu_count is set, try to start
+                await self.maybe_start_cpu_game()
+                break
+
+            except ValueError:
+                await self.send_to_user(
+                    self.user_id,
+                    '❌ Invalid entry. Please enter an integer between 1 and 22.'
+                )
 
     async def receive(self, text_data):
         data = json.loads(text_data)
@@ -144,10 +217,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             if cmd == "restart_game":
                 await self._restart_room(relaunch=True)
                 return
+
             if cmd == "start_new_round":
                 fut = self.state.get("pending_inputs_all", {}).pop("awaiting all", None)
                 if fut and not fut.done():
                     fut.set_result("start new round")
+                else:
+                    # No group future yet → remember this click
+                    self.state["queued_start_round"] = True
                 return
 
         #add balance
@@ -158,7 +235,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # 🔧 Use the shared table from room state (not self.table)
             table = self.state.get("table")
             if raw_amount is None or table is None:
-                print("[WARN] add_balance: missing amount or no table bound (state.table is None)")
                 return
 
             # Normalize amount
@@ -196,16 +272,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 print(f"[ERROR] add_balance failed for {pid!r}: {e}")
             return
 
-
-
         # === Regular chat / numeric input ===
         msg = data.get("message")
         if msg is None:
             return
         
-        print(f"[receive] from {self.user_id[:5]} msg={msg!r} "
-      f"pending_keys={list(self.state['pending_inputs'].keys())} "
-      f"group_waiting={'awaiting all' in self.state.get('pending_inputs_all', {})}")
+    #     print(f"[receive] from {self.user_id[:5]} msg={msg!r} "
+    #   f"pending_keys={list(self.state['pending_inputs'].keys())} "
+    #   f"group_waiting={'awaiting all' in self.state.get('pending_inputs_all', {})}")
 
         # 1) Resolve per-user future FIRST (betting input)
         fut = self.state["pending_inputs"].pop(self.user_id, None)
@@ -225,14 +299,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             {"type": "chat_message", "message": f"{self.user_id[:5]}: {msg}"},
         )
 
-
-    # async def send_to_user(self, user_id, message):
-    #     player = self.state["players"].get(user_id)
-    #     if player:
-    #         await player.send(text_data=json.dumps({'message': message}))
-    #         print('sent to player')
-
-    # MANAGE ALL-IN
     async def send_to_user(self, user_id, message):
         player = self.state["players"].get(user_id)
         if not player:
@@ -243,8 +309,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         else:
             # send chat-style text
             await player.send(text_data=json.dumps({'message': message}))
-
-
 
     async def send_player_info(self, user_id, message):
         player = self.state["players"].get(user_id)
@@ -257,39 +321,61 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
 
     async def get_input(self, user_id, prompt, cancel_event=None):
-        print(f"[get_input] -> set pending for {user_id!r}")
         await self.send_to_user(user_id, prompt)
-        fut = asyncio.Future()
+        loop = asyncio.get_running_loop()
+        fut = loop.create_future()
         self.state["pending_inputs"][user_id] = fut
-        if cancel_event is None:
-            res = await fut
+
+        try:
+            if cancel_event is None:
+                return await fut
+
+            cancel_task = asyncio.create_task(cancel_event.wait())
+            done, _ = await asyncio.wait({fut, cancel_task}, return_when=asyncio.FIRST_COMPLETED)
+
+            if cancel_task in done and not fut.done():
+                # cancelled before user responded
+                raise asyncio.CancelledError
+            # got a user response
+            return await fut
+        finally:
             self.state["pending_inputs"].pop(user_id, None)
-            return res
-        done, _ = await asyncio.wait({fut, cancel_event.wait()}, return_when=asyncio.FIRST_COMPLETED)
-        self.state["pending_inputs"].pop(user_id, None)
-        if cancel_event.is_set():
-            raise asyncio.CancelledError
-        return fut.result()
 
     async def get_input_all(self, prompt, cancel_event=None):
-        await self.broadcast_system(prompt)
-        fut = asyncio.Future()
+        loop = asyncio.get_running_loop()
+        fut = loop.create_future()
         self.state["pending_inputs_all"]["awaiting all"] = fut
-        if cancel_event is None:
-            res = await fut
+
+        # If a click already happened, consume it immediately
+        if self.state.get("queued_start_round"):
+            self.state["queued_start_round"] = False
+            if not fut.done():
+                fut.set_result("start new round")
+
+        # Broadcast after arming the future (safe even if fut already resolved)
+        await self.broadcast_system(prompt)
+
+        try:
+            if cancel_event is None:
+                return await fut
+
+            cancel_task = asyncio.create_task(cancel_event.wait())
+            done, _ = await asyncio.wait({fut, cancel_task}, return_when=asyncio.FIRST_COMPLETED)
+
+            if cancel_task in done and not fut.done():
+                raise asyncio.CancelledError
+            return await fut
+        finally:
             self.state["pending_inputs_all"].pop("awaiting all", None)
-            return res
-        done, _ = await asyncio.wait({fut, cancel_event.wait()}, return_when=asyncio.FIRST_COMPLETED)
-        self.state["pending_inputs_all"].pop("awaiting all", None)
-        if cancel_event.is_set():
-            raise asyncio.CancelledError
-        return fut.result()
 
 
+
+    #restart room
     async def _restart_room(self, *, relaunch: bool = True):
         state = self.state
+        is_cpu_room = (getattr(self, "room_type", "human") == "cpu")
 
-        # 1) Trip cancel & cancel the running task once
+        # 1) Trip cancel & stop current task
         if "cancel_event" not in state:
             state["cancel_event"] = asyncio.Event()
         state["cancel_event"].set()
@@ -301,22 +387,28 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await task
             except asyncio.CancelledError:
                 pass
+            except Exception:
+                pass  # swallow any shutdown noise
 
-        # 2) Resolve/clear any outstanding futures
+        # Clear per-user
         for _, fut in list(state.get("pending_inputs", {}).items()):
             if not fut.done():
                 fut.set_result("cancelled")
         state["pending_inputs"].clear()
-        fut_all = state.get("pending_inputs_all", {}).pop("awaiting all", None)
-        if fut_all and not fut_all.done():
-            fut_all.set_result("cancelled")
+
+        # Clear ALL group futures (not just 'awaiting all')
+        for k, f in list(state.get("pending_inputs_all", {}).items()):
+            if not f.done():
+                f.set_result("cancelled")
+        state["pending_inputs_all"].clear()
+
 
         # 3) Drop table and flags
         state["table"] = None
         self.table = None
         state["game_started"] = False
 
-        # 4) Tell all clients to wipe their UI
+        # 4) Tell clients to wipe UI
         await self.broadcast_system("🔄 Game reset.")
         await self.send_info_all({"reset": True})
         await self.send_info_all({"board": {"board": "Waiting for cards..."}})
@@ -326,23 +418,100 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # 5) Recreate cancel_event for next run
         state["cancel_event"] = asyncio.Event()
 
-        # 6) Relaunch run_game so the prompt returns
-        if relaunch:
-            from .HomeGame import run_game  # local import to avoid cycles
-            player_ids = list(state["players"].keys())
-            if player_ids:
-                state["game_started"] = True
-                state["game_task"] = asyncio.create_task(
-                    run_game(
-                        player_ids,
-                        self,
-                        smallblind=.10,
-                        bigblind=.10,
-                        room_name=self.room_name,
-                        cancel_event=state["cancel_event"],
-                    )
+        # 6) Relaunch appropriate game loop
+        if not relaunch:
+            return
+
+        player_ids = list(state.get("players", {}).keys())
+        if not player_ids:
+            await self.broadcast_system("⏸️ Waiting for a player to connect before starting.")
+            return
+
+        if is_cpu_room:
+            # use previously-entered cpu_count
+            cpu_count = state.get("cpu_count")
+            try:
+                cpu_count = int(cpu_count) if cpu_count is not None else None
+            except (TypeError, ValueError):
+                cpu_count = None
+
+            if cpu_count is None:
+                # ask again; we'll auto-start when set
+                asyncio.create_task(self.prompt_cpu_count())
+                await self.broadcast_system("🤖 Set CPU player count to relaunch.")
+                return
+
+            state["cancel_event"].clear()
+            from .HomeGame import run_game_cpu
+            state["game_started"] = True
+            state["game_task"] = asyncio.create_task(
+                run_game_cpu(
+                    cpu_count,
+                    player_ids,                 # current human(s) in room
+                    self,
+                    smallblind=.10,
+                    bigblind=.10,
+                    room_name=self.room_name,
+                    cancel_event=state["cancel_event"],
                 )
-                await self.broadcast_system("✅ Ready. Type **start new round** or press the button.")
+            )
+            return
+
+        # human-only rooms
+        expected = state.get("player_count")
+        if expected is not None and len(player_ids) != expected:
+            await self.broadcast_system(
+                f"⏳ Waiting for players: {len(player_ids)}/{expected}. Game will start when everyone is here."
+            )
+            return
+
+        state["cancel_event"].clear()
+        from .HomeGame import run_game
+        state["game_started"] = True
+        state["game_task"] = asyncio.create_task(
+            run_game(
+                player_ids,
+                self,
+                smallblind=.10,
+                bigblind=.10,
+                room_name=self.room_name,
+                cancel_event=state["cancel_event"],
+            )
+        )
+
+
+    async def maybe_start_cpu_game(self):
+        # Ensure cpu_count is an int and valid
+        cpu = self.state.get("cpu_count")
+        try:
+            cpu = int(cpu) if cpu is not None else None
+        except (TypeError, ValueError):
+            cpu = None
+
+        # Require exactly 1 human connected in this room and at least 1 CPU
+        if (
+            not self.state["game_started"]
+            and cpu is not None
+            and cpu >= 1
+            and len(self.state["players"]) == 1
+        ):
+            print("✅ RUN GAME (CPU) CONDITIONS MET")
+            self.state["game_started"] = True
+            self.state["cancel_event"].clear()
+            self.state["game_task"] = asyncio.create_task(
+                run_game_cpu(
+                    cpu,
+                    list(self.state["players"].keys()),
+                    self,
+                    smallblind=.10, bigblind=.10,
+                    room_name=self.room_name,
+                    cancel_event=self.state["cancel_event"],
+                )
+            )
+            await self.broadcast_system(
+                f"🎮 Game started in {self.room_name} — 1 human + {cpu} CPU"
+            )
+
 
     
 
