@@ -10,7 +10,6 @@ from collections import OrderedDict, defaultdict
 from decimal import Decimal, ROUND_HALF_UP, getcontext
 import random
 import copy
-from openai import OpenAI
 import os
 from dotenv import load_dotenv
 from datetime import datetime
